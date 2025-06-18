@@ -1,0 +1,8 @@
+all:
+  children:
+    test_servers:
+      hosts:
+        test_vm3:
+          ansible_host: 192.168.50.53
+        test_vm4:
+          ansible_host: 192.168.50.52
