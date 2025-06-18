@@ -36,5 +36,9 @@ override.tf.json
 .terraformrc
 terraform.rc
 
-# ssh keys and ansible vault should be ignored 
+# local ansible stuff should be ignored 
 ansible/ssh/*
+anisble/inventory/*.yaml
+
+# ignore variable tofu inventory files
+infrastructure/**/inventory-hosts.yaml
