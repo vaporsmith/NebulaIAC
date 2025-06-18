@@ -17,9 +17,8 @@ data "opennebula_template" "selected" {
   name = var.vm_template_name
 }
 
-# Lookup the network ID by name
-data "opennebula_network" "selected" {
-  name = var.network_name
+variable "network_id" {
+  description = "OpenNebula virtual network ID to attach"
 }
 
 resource "opennebula_virtual_machine" "vms" {
@@ -33,7 +32,7 @@ resource "opennebula_virtual_machine" "vms" {
   template_id = data.opennebula_template.selected.id
 
   nic {
-    network_id = data.opennebula_network.selected.id
+    network_id = var.network_id
   }
 
   context = {

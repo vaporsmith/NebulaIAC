@@ -1,0 +1,6 @@
+"group_name": "open_project"
+"hosts":
+  "openProject1":
+    "ip": "192.168.50.51"
+  "openProject2":
+    "ip": "192.168.50.50"

@@ -1,11 +1,6 @@
 # NebulaIAC
-Infrastructure as code repo for use with my OpenNebula private cloud
+Infrastructure as code repo for use with OpenNebula private cloud
+Includes infrastructure orchestration for tofu integrated to ansible inventory mangement via script. 
 
-## Getting Started 
-1. Generate `infrastructure/terraform.tfvars`
-You'll have to put your own relevant values in here
-```
-one_endpoint = "http://<your-sunstone-ip>:2633/RPC2"
-one_username = "oneadmin"
-one_password = "your_secret_password"
-```
+## This project is under construction. Use at your own risk! 
+
