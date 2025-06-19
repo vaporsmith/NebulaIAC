@@ -1,6 +1,0 @@
-"group_name": "test_servers"
-"hosts":
-  "test_vm3":
-    "ip": "192.168.50.53"
-  "test_vm4":
-    "ip": "192.168.50.52"

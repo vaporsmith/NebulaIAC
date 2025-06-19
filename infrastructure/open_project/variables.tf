@@ -48,3 +48,10 @@ variable "vm_memory" {
 variable "ssh_public_key_path" {
   default = "../../ansible/ssh/id_ansible.pub"
 }
+
+variable "vm_disk_size_mb" {
+  description = "Size of the VM disk in megabytes"
+  type        = number
+  default     = 20480  # 20 GB default
+}
+

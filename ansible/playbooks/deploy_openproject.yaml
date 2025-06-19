@@ -1,0 +1,7 @@
+---
+- name: Deploy OpenProject Stack
+  hosts: open_project
+  become: true
+  roles:
+    - openproject
+
