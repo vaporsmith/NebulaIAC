@@ -1,0 +1,5 @@
+---
+- hosts: controller
+  become: true
+  roles:
+    - rocky9_stig_remediation

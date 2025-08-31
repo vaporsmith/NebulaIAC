@@ -1,0 +1,4 @@
+---
+- name: set default systemd target to multiuser
+  ansible.builtin.shell:
+    cmd: "systemctl set-default multi-user.target"

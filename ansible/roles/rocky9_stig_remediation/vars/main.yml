@@ -1,0 +1,5 @@
+---
+# vars file for rocky9_stig_remediation
+nameservers:
+  - "8.8.8.8"
+  - "8.8.4.4"

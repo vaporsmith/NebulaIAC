@@ -1,0 +1,7 @@
+---
+- name: ensure include statement in named.conf
+  ansible.builtin.lineinfile:
+    path: /etc/named.conf 
+    line: include "/etc/crypto-policies/back-ends/bind.config"
+    state: present
+    create: true

@@ -1,0 +1,12 @@
+---
+- name: replace /etc/audit.d/immutable.rules with correct format
+  ansible.builtin.copy:
+    dest: /etc/audit/rules.d/immutable.rules
+    content: |
+      --loginuid-immutable
+      -e 2
+      -f 2
+
+- name: reload auditd to apply immutable rules
+  ansible.builtin.shell:
+    cmd: "service auditd reload"

@@ -42,3 +42,8 @@ anisble/inventory/*.yaml
 
 # ignore variable tofu inventory files
 infrastructure/**/inventory-hosts.yaml
+
+# ignore big stuff
+*.iso
+*.zip
+*output*

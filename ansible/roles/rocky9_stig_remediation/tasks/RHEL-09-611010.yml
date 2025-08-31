@@ -1,0 +1,6 @@
+---
+- name: set CtrlAltDelBurstAction=none in /etc/systemd/system.conf
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/system-auth
+    line: "password required pam_pwquality.so retry=3"
+    state: present

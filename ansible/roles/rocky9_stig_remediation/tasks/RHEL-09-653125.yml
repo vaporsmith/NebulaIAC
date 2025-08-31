@@ -1,0 +1,9 @@
+---
+- name: install postfix package
+  ansible.builtin.dnf:
+    name: postfix
+    state: latest
+
+- name: ensure postconf alias maps
+  ansible.builtin.command:
+    cmd: /usr/bin/newaliases

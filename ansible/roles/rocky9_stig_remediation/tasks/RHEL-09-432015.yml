@@ -1,0 +1,6 @@
+---
+- name: set CtrlAltDelBurstAction=none in /etc/systemd/system.conf
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers
+    line: "Defaults timestamp_timeout=0"
+    regexp: '^Defaults timestamp_timeout='

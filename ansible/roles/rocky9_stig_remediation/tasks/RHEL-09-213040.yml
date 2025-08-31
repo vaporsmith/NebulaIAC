@@ -1,0 +1,14 @@
+---
+- name: ensure sysctl coredump /usr/lib settings are correct
+  ansible.builtin.lineinfile:
+    path: /usr/lib/sysctl.d/50-coredump.conf
+    regexp: '^kernel.core_pattern='
+    line: "kernel.core_pattern = |/bin/false"
+
+- name: ensure sysctl coredump /lib settings are correct
+  ansible.builtin.lineinfile:
+    path: /lib/sysctl.d/50-coredump.conf
+    regexp: '^kernel.core_pattern='
+    line: "kernel.core_pattern = |/bin/false"
+
+

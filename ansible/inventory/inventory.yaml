@@ -4,9 +4,7 @@ all:
       hosts:
         openproject:
           ansible_host: 192.168.50.50
-    test_servers:
+    rocky_linux_9:
       hosts:
-        test_vm1:
-          ansible_host: 192.168.50.55
-        test_vm2:
-          ansible_host: 192.168.50.54
+        rocky_linux_9:
+          ansible_host: 192.168.50.51

@@ -1,0 +1,10 @@
+---
+- name: replace /etc/profile.d/tmux.sh with correct format
+  ansible.builtin.copy:
+    dest: /etc/profile.d/tmux.sh
+    content: | 
+      if [ "$PS1" ]; then
+        parent=$(ps -o ppid= -p $$)
+        name=$(ps -o comm= -p $parent)
+        case "$name" in (sshd|login) tmux ;; esac
+      fi 

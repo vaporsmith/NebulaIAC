@@ -1,0 +1,21 @@
+---
+# tasks to ensure firewall uses deny-all policy
+- name: enable ssh service for firewalld
+  ansible.builtin.shell:
+    cmd: "firewall-cmd --permanent --add-service=ssh --zone=drop"
+
+- name: reload firewalld
+  ansible.builtin.shell:
+    cmd: "firewall-cmd --reload"
+
+- name: swap firewalld target zone to drop
+  ansible.builtin.shell:
+    cmd: "firewall-cmd --set-default-zone=drop"
+
+- name: add default interface to drop zone
+  ansible.builtin.shell:
+    cmd: "firewall-cmd --permanent --zone=drop --change-interface={{ ansible_default_ipv4.interface }}"
+
+- name: reload firewalld
+  ansible.builtin.shell:
+    cmd: "firewall-cmd --reload"

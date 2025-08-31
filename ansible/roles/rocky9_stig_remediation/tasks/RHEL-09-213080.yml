@@ -1,0 +1,13 @@
+---
+- name: ensure sysctl kernel.yama.ptrace_scope /usr/lib settings are correct
+  ansible.builtin.lineinfile:
+    path: /usr/lib/sysctl.d/10-default-yama-scope.conf
+    regexp: '^kernel.yama.ptrace_scope = '
+    line: "kernel.yama.ptrace_scope = 1"
+
+- name: ensure sysctl kernel.yama.ptrace_scope /lib settings are correct
+  ansible.builtin.lineinfile:
+    path: /lib/sysctl.d/10-default-yama-scope.conf
+    regexp: '^kernel.yama.ptrace_scope = '
+    line: "kernel.yama.ptrace_scope = 1"
+

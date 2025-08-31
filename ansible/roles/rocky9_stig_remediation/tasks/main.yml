@@ -1,0 +1,29 @@
+---
+# tasks file for rocky9_stig_remediation
+- name: remediate stigs
+  ansible.builtin.include_tasks:
+    file: "{{  task_file }}"
+  loop:
+    - update_and_remediate.yml
+    - RHEL-09-211020.yml
+    - RHEL-09-211030.yml
+    - RHEL-09-211045.yml
+    - RHEL-09-212020.yml
+    - RHEL-09-213040.yml
+    - RHEL-09-253050.yml
+    - RHEL-09-213080.yml
+    - RHEL-09-411095.yml
+    - RHEL-09-672050.yml
+    - RHEL-09-654270.yml
+    - RHEL-09-653125.yml
+    - RHEL-09-611010.yml
+    - RHEL-09-432015.yml
+    - RHEL-09-412015.yml
+    - RHEL-09-251020.yml
+    - RHEL-09-253050.yml
+  loop_control:
+    loop_var: task_file
+
+- name: execute stig scan
+  ansible.builtin.include_role:
+    name: rocky9_bash_stig_tool

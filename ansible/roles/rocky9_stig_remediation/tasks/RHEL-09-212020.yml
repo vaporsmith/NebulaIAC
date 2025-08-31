@@ -1,0 +1,19 @@
+---
+- name: remove content from 01_users
+  ansible.builtin.copy:
+    dest: /etc/grub.d/01_users
+    content: ""
+      
+- name: update grub user config with a unique grub user
+  ansible.builtin.blockinfile:
+    path: /etc/grub.d/40_custom
+    block: | 
+      set superusers="unique_grub_user"
+      export superusers
+      password_pbkdf2 unique_grub_user grub.pbkdf2.sha512.10000.D0238F3747DC47C0AD43560E4EF311266992D34F326051961FBD5A6BCFCE3B9C7EDB0CF601145F78442D9D0542F3198C48D9391F668C6698A56CA44038550134.32221446F1B6D041B303CBA8747B912C5D07A53DD302382460134D8D18000456D0A521DA59EEA927F5060877D01DF154E5A2A06D25CFA0759C2FD99546181A03
+
+- name: update grub config 
+  ansible.builtin.command: "grub2-mkconfig -o /boot/grub2/grub.cfg"
+
+- name: update grub kernel config using grubby
+  ansible.builtin.command: "grubby --update-kernel=ALL"

@@ -1,0 +1,49 @@
+---
+- name: ensure dns resolution via resolv.conf
+  ansible.builtin.lineinfile: 
+    path: /etc/resolv.conf
+    state: present
+    line: "nameserver {{ ns_ip }}" 
+  loop: "{{ nameservers }}"
+  loop_control:
+    loop_var: ns_ip
+
+
+- name: generate scap scan results xml
+  ansible.builtin.command:
+    argv: 
+      - /bin/oscap 
+      - xccdf 
+      - eval
+      - --results
+      - /root/disa-stig-scan.xml 
+      - --profile
+      - stig
+      - /usr/share/xml/scap/ssg/content/ssg-rl9-ds.xml
+  ignore_errors: true
+  no_log: true
+
+- name: generate scap scan remediation script
+  ansible.builtin.command:
+    argv: 
+      - /bin/oscap
+      -  xccdf 
+      - generate
+      - fix 
+      - --output
+      - /root/disa-stig-remediate.sh 
+      - --profile
+      - stig
+      - /root/disa-stig-scan.xml"
+  ignore_errors: true
+  no_log: true
+
+- name: check for previous remediation
+  ansible.builtin.stat:
+    path: /root/.remediated
+  register: remediated
+
+- name: apply remediation script, preserving ansbile sudo privilige (opens catII stig) 
+  ansible.builtin.shell: 
+    cmd: "/root/disa-stig-remediate.sh; echo 'ansible ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/99-ansible; touch /root/.remediated"
+  when: not remediated.stat.exists

@@ -1,0 +1,18 @@
+---
+# resolves inconsistency with default checks and text included in: 
+# GROUP ID:
+# V-258242
+# RULE ID:
+# SV-258242r958908
+# STIG ID:
+# RHEL-09-672050
+
+- name: replace /etc/issue with correct formatting 
+  ansible.builtin.copy:
+    src: issue.txt
+    dest: /etc/issue
+    owner: root
+    group: root
+    mode: '0644'
+    setype: etc_t
+

@@ -1,0 +1,12 @@
+---
+- name: remove all occurances of CtrlAltDelBurstAction from /etc/systemd/system.conf
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/system.conf
+    regexp: '^CtrlAltDelBurstAction'
+    state: absent
+
+- name: set CtrlAltDelBurstAction=none in /etc/systemd/system.conf
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/system.conf
+    line: CtrlAltDelBurstAction=none
+    state: present
