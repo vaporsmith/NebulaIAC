@@ -1,10 +1,20 @@
 all:
   children:
+    kube_controllers:
+      hosts:
+        kube_controller:
+          ansible_host: 192.168.50.51
+    kube_workers:
+      hosts:
+        kube_worker_1:
+          ansible_host: 192.168.50.55
+        kube_worker_2:
+          ansible_host: 192.168.50.53
+        kube_worker_3:
+          ansible_host: 192.168.50.52
+        kube_worker_4:
+          ansible_host: 192.168.50.54
     open_project:
       hosts:
         openproject:
           ansible_host: 192.168.50.50
-    rocky_linux_9:
-      hosts:
-        rocky_linux_9:
-          ansible_host: 192.168.50.51

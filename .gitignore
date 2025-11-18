@@ -1,49 +1,81 @@
-# Local .terraform directories
+# ----------------------
+# Terraform / OpenTofu
+# ----------------------
 .terraform/
-
-# .tfstate files
 *.tfstate
 *.tfstate.*
-
-# Crash log files
+.terraform.tfstate.lock.info
 crash.log
 crash.*.log
 
-# Exclude all .tfvars files, which are likely to contain sensitive data, such as
-# password, private keys, and other secrets. These should not be part of version 
-# control as they are data points which are potentially sensitive and subject 
-# to change depending on the environment.
+# Sensitive / variable files
 *.tfvars
 *.tfvars.json
 
-# Ignore override files as they are usually used to override resources locally and so
-# are not checked in
+# Local overrides
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
 
-# Ignore transient lock info files created by terraform apply
-.terraform.tfstate.lock.info
-
-# Include override files you do wish to add to version control using negated pattern
-# !example_override.tf
-
-# Include tfplan files to ignore the plan output of command: terraform plan -out=tfplan
-# example: *tfplan*
-
-# Ignore CLI configuration files
+# Terraform CLI config
 .terraformrc
 terraform.rc
 
-# local ansible stuff should be ignored 
-ansible/ssh/*
-anisble/inventory/*.yaml
+# Plans (optional)
+# *tfplan*
 
-# ignore variable tofu inventory files
+# ----------------------
+# Ansible
+# ----------------------
+# SSH keys / private materials
+ansible/ssh/*
+!ansible/ssh/.gitkeep
+
+# Generated inventories + backups
+ansible/inventory/*.yaml
+ansible/inventory/*.yaml.bak
+
+# Retry files
+*.retry
+
+# ----------------------
+# Inventory host definitions (environment-specific)
+# ----------------------
 infrastructure/**/inventory-hosts.yaml
 
-# ignore big stuff
+# ----------------------
+# Python / Scripts
+# ----------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pytest_cache/
+
+# Virtual envs
+.venv/
+env/
+venv/
+ENV/
+
+# ----------------------
+# General / Misc
+# ----------------------
+# Large binaries / ISOs
 *.iso
 *.zip
+
+# Generic "output" folders/files
 *output*
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+
+# Vault / secrets (keep out of repo)
+.vault-password*
+vault-pass*
+*.vaultpass
+
