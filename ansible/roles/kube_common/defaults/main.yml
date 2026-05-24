@@ -1,0 +1,11 @@
+---
+kube_version_minor: "v1.35"
+
+kube_packages:
+  - kubelet
+  - kubeadm
+  - kubectl
+
+kube_required_kernel_modules:
+  - overlay
+  - br_netfilter

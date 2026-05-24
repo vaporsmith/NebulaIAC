@@ -2,18 +2,18 @@ all:
   children:
     kube_controllers:
       hosts:
-        kube_controller:
+        kube-controller:
           ansible_host: 192.168.50.51
     kube_workers:
       hosts:
-        kube_worker_1:
-          ansible_host: 192.168.50.55
-        kube_worker_2:
-          ansible_host: 192.168.50.53
-        kube_worker_3:
-          ansible_host: 192.168.50.52
-        kube_worker_4:
+        kube-worker-1:
           ansible_host: 192.168.50.54
+        kube-worker-2:
+          ansible_host: 192.168.50.55
+        kube-worker-3:
+          ansible_host: 192.168.50.52
+        kube-worker-4:
+          ansible_host: 192.168.50.53
     open_project:
       hosts:
         openproject:

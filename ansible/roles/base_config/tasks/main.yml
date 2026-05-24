@@ -1,0 +1,5 @@
+---
+# tasks file for base_config
+- name: set hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
