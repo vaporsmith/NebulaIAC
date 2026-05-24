@@ -1,2 +1,49 @@
 ---
-# tasks file for kube_cni
+- name: Wait for Kubernetes API to become available
+  ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes
+  register: kube_api_check
+  retries: 20
+  delay: 6
+  until: kube_api_check.rc == 0
+  changed_when: false
+
+- name: Install Flannel CNI
+  ansible.builtin.command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf
+    apply -f {{ kube_cni_manifest_url }}
+  register: flannel_apply
+  changed_when: >
+    'created' in flannel_apply.stdout or
+    'configured' in flannel_apply.stdout
+
+- name: Configure Flannel backend
+  ansible.builtin.command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf
+    -n kube-flannel patch configmap kube-flannel-cfg
+    --type merge
+    -p '{"data":{"net-conf.json":"{\n  \"Network\": \"{{ kube_pod_cidr }}\",\n  \"Backend\": {\n    \"Type\": \"{{ kube_flannel_backend_type }}\"\n  }\n}\n"}}'
+  register: flannel_backend_patch
+  changed_when: "'patched' in flannel_backend_patch.stdout"
+
+- name: Restart Flannel after backend configuration
+  ansible.builtin.command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf
+    -n kube-flannel rollout restart daemonset/kube-flannel-ds
+  register: flannel_rollout_restart
+  changed_when: "'restarted' in flannel_rollout_restart.stdout"
+
+- name: Wait for Flannel rollout
+  ansible.builtin.command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf
+    -n kube-flannel rollout status daemonset/kube-flannel-ds
+  changed_when: false
+
+- name: Wait for CoreDNS pods to be visible
+  ansible.builtin.command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf
+    -n kube-system get pods -l k8s-app=kube-dns
+  register: coredns_pods
+  retries: 20
+  delay: 6
+  until: coredns_pods.rc == 0
+  changed_when: false

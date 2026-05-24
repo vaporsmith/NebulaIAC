@@ -1,2 +1,195 @@
 ---
-# tasks file for kube_common
+- name: Assert Rocky/RHEL-family host
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == "RedHat"
+    fail_msg: "This kube_common role is currently written for Rocky/RHEL-family hosts."
+
+- name: Set system hostname to inventory hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Add node hostname to /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: "^{{ ansible_default_ipv4.address }}\\s+"
+    line: "{{ ansible_default_ipv4.address }} {{ inventory_hostname }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure kubelet to use the inventory/LAN node IP
+  ansible.builtin.copy:
+    dest: /etc/sysconfig/kubelet
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      KUBELET_EXTRA_ARGS=--node-ip={{ ansible_host | default(ansible_default_ipv4.address) }}
+  notify: Restart kubelet
+
+- name: Install base OS packages for Kubernetes node
+  ansible.builtin.dnf:
+    name:
+      - curl
+      - ca-certificates
+      - gnupg2
+      - yum-utils
+      - device-mapper-persistent-data
+      - lvm2
+      - iproute-tc
+      - conntrack
+      - socat
+      - iptables
+      - ethtool
+      - container-selinux
+      - policycoreutils-python-utils
+      - selinux-policy
+      - selinux-policy-targeted
+      - python3-libselinux
+      - python3-policycoreutils
+    state: present
+    update_cache: true
+
+- name: Configure Docker CE repository for containerd.io
+  ansible.builtin.yum_repository:
+    name: docker-ce-stable
+    description: Docker CE Stable - $basearch
+    baseurl: https://download.docker.com/linux/centos/9/$basearch/stable
+    enabled: true
+    gpgcheck: true
+    gpgkey: https://download.docker.com/linux/centos/gpg
+
+- name: Install containerd
+  ansible.builtin.dnf:
+    name: containerd.io
+    state: present
+    update_cache: true
+
+- name: Disable swap immediately
+  ansible.builtin.command: swapoff -a
+  changed_when: false
+
+- name: Disable swap permanently in /etc/fstab
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\sswap\s.*)$'
+    replace: '# \1'
+
+- name: Configure Kubernetes kernel modules at boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      overlay
+      br_netfilter
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Load Kubernetes kernel modules immediately
+  ansible.builtin.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ kube_required_kernel_modules }}"
+
+- name: Configure Kubernetes sysctl values
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-kubernetes.conf
+    content: |
+      net.bridge.bridge-nf-call-iptables = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward = 1
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Apply sysctl values
+  ansible.builtin.command: sysctl --system
+  changed_when: false
+
+- name: Ensure containerd config directory exists
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Generate default containerd config
+  ansible.builtin.command: containerd config default
+  register: containerd_default_config
+  changed_when: false
+
+- name: Configure containerd for Kubernetes
+  ansible.builtin.copy:
+    dest: /etc/containerd/config.toml
+    content: "{{ containerd_default_config.stdout | regex_replace('SystemdCgroup = false', 'SystemdCgroup = true') }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart containerd
+
+- name: Flush handlers before kubeadm uses containerd
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start containerd
+  ansible.builtin.systemd:
+    name: containerd
+    state: started
+    enabled: true
+
+- name: Configure Kubernetes yum repository
+  ansible.builtin.copy:
+    dest: /etc/yum.repos.d/kubernetes.repo
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [kubernetes]
+      name=Kubernetes
+      baseurl=https://pkgs.k8s.io/core:/stable:/{{ kube_version_minor }}/rpm/
+      enabled=1
+      gpgcheck=1
+      gpgkey=https://pkgs.k8s.io/core:/stable:/{{ kube_version_minor }}/rpm/repodata/repomd.xml.key
+      exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+
+- name: Install Kubernetes packages
+  ansible.builtin.dnf:
+    name: "{{ kube_packages }}"
+    state: present
+    disable_excludes: kubernetes
+    update_cache: true
+
+- name: Enable kubelet
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true
+
+- name: Configure SELinux mode in config file
+  ansible.builtin.lineinfile:
+    path: /etc/selinux/config
+    regexp: '^SELINUX='
+    line: "SELINUX={{ kube_selinux_state }}"
+  when: kube_manage_selinux | bool
+
+- name: Get current SELinux mode
+  ansible.builtin.command: getenforce
+  register: selinux_mode
+  changed_when: false
+  failed_when: false
+  when: kube_manage_selinux | bool
+
+- name: Set SELinux enforcing immediately
+  ansible.builtin.command: setenforce 1
+  changed_when: selinux_mode.stdout != "Enforcing"
+  failed_when: false
+  when:
+    - kube_manage_selinux | bool
+    - kube_selinux_state == "enforcing"
+    - selinux_mode.stdout is defined
+    - selinux_mode.stdout != "Disabled"
+
+- name: Note firewalld is intentionally unmanaged for this first pass
+  ansible.builtin.debug:
+    msg: "firewalld is not managed in this first bootstrap pass. Revisit kube image/node hardening later."
+  when: not kube_manage_firewalld | bool

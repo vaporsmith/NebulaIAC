@@ -1,2 +1,6 @@
 ---
-# defaults file for kube_cni
+kube_cni_manifest_url: "https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml"
+
+# Good default for this homelab because all kube nodes are on the same L2 LAN.
+kube_flannel_backend_type: "host-gw"
+kube_pod_cidr: "10.244.0.0/16"

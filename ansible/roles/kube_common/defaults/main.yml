@@ -9,3 +9,9 @@ kube_packages:
 kube_required_kernel_modules:
   - overlay
   - br_netfilter
+
+kube_manage_selinux: true
+kube_selinux_state: "enforcing"
+
+# firewalld is intentionally deferred for now.
+kube_manage_firewalld: false

@@ -1,2 +1,9 @@
 ---
-# tasks file for kube_worker
+- name: Check if worker has already joined the cluster
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: kubelet_conf
+
+- name: Join worker to Kubernetes cluster
+  ansible.builtin.command: "{{ hostvars[groups[kube_controller_group][0]].kubeadm_join_command }}"
+  when: not kubelet_conf.stat.exists

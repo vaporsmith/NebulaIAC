@@ -1,2 +1,2 @@
 ---
-# defaults file for kube_worker
+kube_controller_group: "kube_controllers"

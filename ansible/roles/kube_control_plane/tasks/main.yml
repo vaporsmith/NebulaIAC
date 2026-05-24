@@ -1,2 +1,39 @@
 ---
-# tasks file for kube_control_plane
+- name: Check if Kubernetes control plane is already initialized
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: kube_admin_conf
+
+- name: Initialize Kubernetes control plane
+  ansible.builtin.command: >
+    kubeadm init
+    --pod-network-cidr={{ kube_pod_cidr }}
+    --apiserver-advertise-address={{ ansible_default_ipv4.address }}
+    --cri-socket=unix:///run/containerd/containerd.sock
+  when: not kube_admin_conf.stat.exists
+
+- name: Ensure kubeconfig directory exists for {{ kube_ansible_user }}
+  ansible.builtin.file:
+    path: "/home/{{ kube_ansible_user }}/.kube"
+    state: directory
+    owner: "{{ kube_ansible_user }}"
+    group: "{{ kube_ansible_user }}"
+    mode: "0755"
+
+- name: Copy admin kubeconfig for {{ kube_ansible_user }}
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "/home/{{ kube_ansible_user }}/.kube/config"
+    remote_src: true
+    owner: "{{ kube_ansible_user }}"
+    group: "{{ kube_ansible_user }}"
+    mode: "0600"
+
+- name: Generate kubeadm worker join command
+  ansible.builtin.command: kubeadm token create --print-join-command
+  register: kubeadm_join_command_result
+  changed_when: false
+
+- name: Store kubeadm worker join command with explicit CRI socket
+  ansible.builtin.set_fact:
+    kubeadm_join_command: "{{ kubeadm_join_command_result.stdout }} --cri-socket=unix:///run/containerd/containerd.sock"
