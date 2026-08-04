@@ -1,0 +1,42 @@
+---
+- name: Install MetalLB native manifest
+  ansible.builtin.command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf
+    apply -f {{ metallb_manifest_url }}
+  register: metallb_install
+  changed_when: >
+    'created' in metallb_install.stdout or
+    'configured' in metallb_install.stdout
+
+- name: Wait for MetalLB controller deployment
+  ansible.builtin.command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf
+    -n {{ metallb_namespace }}
+    rollout status deployment/controller
+    --timeout=180s
+  changed_when: false
+
+- name: Wait for MetalLB speaker daemonset
+  ansible.builtin.command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf
+    -n {{ metallb_namespace }}
+    rollout status daemonset/speaker
+    --timeout=180s
+  changed_when: false
+
+- name: Render MetalLB address pool configuration
+  ansible.builtin.template:
+    src: metallb-pool.yaml.j2
+    dest: /tmp/metallb-pool.yaml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Apply MetalLB address pool configuration
+  ansible.builtin.command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf
+    apply -f /tmp/metallb-pool.yaml
+  register: metallb_pool_apply
+  changed_when: >
+    'created' in metallb_pool_apply.stdout or
+    'configured' in metallb_pool_apply.stdout

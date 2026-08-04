@@ -22,3 +22,9 @@
   become: true
   roles:
     - kube_worker
+
+- name: Install MetalLB
+  hosts: kube_controllers
+  become: true
+  roles:
+    - kube_metallb

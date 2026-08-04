@@ -1,0 +1,9 @@
+---
+metallb_version: "v0.16.1"
+metallb_namespace: "metallb-system"
+
+metallb_manifest_url: "https://raw.githubusercontent.com/metallb/metallb/{{ metallb_version }}/config/manifests/metallb-native.yaml"
+
+metallb_address_pool_name: "homelab-lan-pool"
+metallb_address_pool:
+  - "192.168.50.220-192.168.50.229"
