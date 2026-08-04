@@ -34,3 +34,9 @@
   become: true
   roles:
     - kube_istio
+
+- name: Deploy nginx Istio smoke test
+  hosts: kube_controllers
+  become: true
+  roles:
+    - kube_smoke_nginx
