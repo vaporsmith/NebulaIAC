@@ -28,3 +28,9 @@
   become: true
   roles:
     - kube_metallb
+
+- name: Install Istio
+  hosts: kube_controllers
+  become: true
+  roles:
+    - kube_istio
