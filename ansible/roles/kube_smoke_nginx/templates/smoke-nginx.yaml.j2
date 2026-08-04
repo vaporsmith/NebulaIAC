@@ -1,0 +1,75 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ smoke_nginx_name }}
+  namespace: {{ smoke_nginx_namespace }}
+  labels:
+    app: {{ smoke_nginx_name }}
+spec:
+  replicas: {{ smoke_nginx_replicas }}
+  selector:
+    matchLabels:
+      app: {{ smoke_nginx_name }}
+  template:
+    metadata:
+      labels:
+        app: {{ smoke_nginx_name }}
+    spec:
+      containers:
+        - name: nginx
+          image: {{ smoke_nginx_image }}
+          ports:
+            - containerPort: {{ smoke_nginx_container_port }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ smoke_nginx_name }}
+  namespace: {{ smoke_nginx_namespace }}
+spec:
+  type: {{ smoke_nginx_service_type }}
+  selector:
+    app: {{ smoke_nginx_name }}
+  ports:
+    - name: http
+      port: {{ smoke_nginx_service_port }}
+      targetPort: {{ smoke_nginx_container_port }}
+
+---
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: {{ istio_ingress_gateway_name }}
+  namespace: {{ smoke_nginx_namespace }}
+spec:
+  selector:
+{% for key, value in istio_ingress_gateway_selector.items() %}
+    {{ key }}: {{ value }}
+{% endfor %}
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - {{ smoke_nginx_host }}
+
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: {{ smoke_nginx_name }}
+  namespace: {{ smoke_nginx_namespace }}
+spec:
+  hosts:
+    - {{ smoke_nginx_host }}
+  gateways:
+    - {{ istio_ingress_gateway_name }}
+  http:
+    - route:
+        - destination:
+            host: {{ smoke_nginx_name }}.{{ smoke_nginx_namespace }}.svc.cluster.local
+            port:
+              number: {{ smoke_nginx_service_port }}

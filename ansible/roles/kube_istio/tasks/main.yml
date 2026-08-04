@@ -1,0 +1,69 @@
+---
+- name: Ensure Istio install directory exists
+  ansible.builtin.file:
+    path: "{{ istio_install_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Check whether istioctl is already installed
+  ansible.builtin.stat:
+    path: "{{ istioctl_path }}"
+  register: istioctl_stat
+
+- name: Download Istio release archive
+  ansible.builtin.get_url:
+    url: "https://github.com/istio/istio/releases/download/{{ istio_version }}/istio-{{ istio_version }}-{{ istio_arch }}.tar.gz"
+    dest: "/tmp/istio-{{ istio_version }}-{{ istio_arch }}.tar.gz"
+    mode: "0644"
+  when: not istioctl_stat.stat.exists
+
+- name: Extract Istio release archive
+  ansible.builtin.unarchive:
+    src: "/tmp/istio-{{ istio_version }}-{{ istio_arch }}.tar.gz"
+    dest: "{{ istio_install_dir }}"
+    remote_src: true
+    creates: "{{ istioctl_path }}"
+  when: not istioctl_stat.stat.exists
+
+- name: Install Istio using istioctl
+  ansible.builtin.command: >
+    {{ istioctl_path }}
+    install
+    --kubeconfig=/etc/kubernetes/admin.conf
+    --set profile={{ istio_profile }}
+    -y
+  register: istio_install
+  changed_when: >
+    'Installation complete' in istio_install.stdout or
+    'installed' in istio_install.stdout or
+    'updated' in istio_install.stdout
+
+- name: Wait for istiod deployment
+  ansible.builtin.command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf
+    -n {{ istio_system_namespace }}
+    rollout status deployment/istiod
+    --timeout=240s
+  changed_when: false
+
+- name: Wait for Istio ingress gateway deployment
+  ansible.builtin.command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf
+    -n {{ istio_system_namespace }}
+    rollout status deployment/{{ istio_ingress_service_name }}
+    --timeout=240s
+  changed_when: false
+
+- name: Verify Istio ingress gateway service
+  ansible.builtin.command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf
+    -n {{ istio_system_namespace }}
+    get svc {{ istio_ingress_service_name }} -o wide
+  register: istio_ingress_service
+  changed_when: false
+
+- name: Show Istio ingress gateway service
+  ansible.builtin.debug:
+    var: istio_ingress_service.stdout_lines

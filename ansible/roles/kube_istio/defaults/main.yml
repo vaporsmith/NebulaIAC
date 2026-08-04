@@ -1,0 +1,12 @@
+---
+istio_version: "1.30.0"
+istio_arch: "linux-amd64"
+
+istio_install_dir: "/opt/istio"
+istio_release_dir: "{{ istio_install_dir }}/istio-{{ istio_version }}"
+istioctl_path: "{{ istio_release_dir }}/bin/istioctl"
+
+istio_profile: "default"
+
+istio_system_namespace: "istio-system"
+istio_ingress_service_name: "istio-ingressgateway"

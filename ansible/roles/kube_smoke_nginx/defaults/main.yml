@@ -1,0 +1,16 @@
+---
+smoke_nginx_namespace: "default"
+smoke_nginx_name: "smoke-nginx"
+
+smoke_nginx_replicas: 3
+smoke_nginx_image: "nginx:stable"
+
+smoke_nginx_host: "smoke.vaportech.labs"
+
+smoke_nginx_service_type: "ClusterIP"
+smoke_nginx_service_port: 80
+smoke_nginx_container_port: 80
+
+istio_ingress_gateway_name: "smoke-nginx-gateway"
+istio_ingress_gateway_selector:
+  istio: ingressgateway

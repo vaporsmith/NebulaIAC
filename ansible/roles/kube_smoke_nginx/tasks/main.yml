@@ -1,0 +1,41 @@
+---
+- name: Render smoke nginx Istio test manifest
+  ansible.builtin.template:
+    src: smoke-nginx.yaml.j2
+    dest: /tmp/smoke-nginx.yaml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Apply smoke nginx Istio test manifest
+  ansible.builtin.command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf
+    apply -f /tmp/smoke-nginx.yaml
+  register: smoke_nginx_apply
+  changed_when: >
+    'created' in smoke_nginx_apply.stdout or
+    'configured' in smoke_nginx_apply.stdout
+
+- name: Wait for smoke nginx deployment
+  ansible.builtin.command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf
+    -n {{ smoke_nginx_namespace }}
+    rollout status deployment/{{ smoke_nginx_name }}
+    --timeout=180s
+  changed_when: false
+
+- name: Get Istio ingress gateway external IP
+  ansible.builtin.command: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf
+    -n istio-system
+    get svc istio-ingressgateway
+    -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+  register: istio_ingress_external_ip
+  changed_when: false
+
+- name: Show Istio smoke test command
+  ansible.builtin.debug:
+    msg:
+      - "Istio ingress external IP: {{ istio_ingress_external_ip.stdout }}"
+      - "Test with:"
+      - "curl -H 'Host: {{ smoke_nginx_host }}' http://{{ istio_ingress_external_ip.stdout }}"
