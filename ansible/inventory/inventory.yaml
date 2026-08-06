@@ -1,5 +1,9 @@
 all:
   children:
+    dns_servers:
+      hosts:
+        dns_server_01:
+          ansible_host: 192.168.50.50
     kube_controllers:
       hosts:
         kube-controller:
@@ -14,7 +18,3 @@ all:
           ansible_host: 192.168.50.52
         kube-worker-4:
           ansible_host: 192.168.50.53
-    open_project:
-      hosts:
-        openproject:
-          ansible_host: 192.168.50.50
