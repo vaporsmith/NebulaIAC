@@ -1,0 +1,25 @@
+# Managed by Ansible: dnsmasq_lan_dns
+
+# Listen only on the DNS server's LAN address and localhost.
+listen-address=127.0.0.1,{{ dnsmasq_listen_address }}
+bind-interfaces
+
+# Do not read upstream resolvers from /etc/resolv.conf.
+no-resolv
+
+{% for upstream_server in dnsmasq_upstream_servers %}
+server={{ upstream_server }}
+{% endfor %}
+
+# Basic resolver behavior.
+domain-needed
+bogus-priv
+expand-hosts
+cache-size={{ dnsmasq_cache_size }}
+
+# Local homelab domain.
+local=/{{ dnsmasq_domain }}/
+
+# Wildcard all homelab app names to the Istio ingress gateway.
+address=/.{{ dnsmasq_domain }}/{{ dnsmasq_ingress_ip }}
+address=/{{ dnsmasq_domain }}/{{ dnsmasq_ingress_ip }}

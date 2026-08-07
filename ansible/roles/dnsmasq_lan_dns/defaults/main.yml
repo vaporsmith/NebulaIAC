@@ -1,0 +1,14 @@
+---
+dnsmasq_domain: "vaportech.labs"
+
+# This should be the Istio ingress gateway LoadBalancer IP.
+# Use a documentation/example value in public-facing docs.
+dnsmasq_ingress_ip: "192.168.50.221"
+
+dnsmasq_listen_address: "{{ ansible_host | default(ansible_default_ipv4.address) }}"
+
+dnsmasq_upstream_servers:
+  - "1.1.1.1"
+  - "9.9.9.9"
+
+dnsmasq_cache_size: 1000

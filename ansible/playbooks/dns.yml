@@ -1,0 +1,6 @@
+---
+- name: Configure LAN DNS servers
+  hosts: dns_servers
+  become: true
+  roles:
+    - dnsmasq_lan_dns

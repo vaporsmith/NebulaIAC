@@ -1,0 +1,38 @@
+---
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == "RedHat"
+    fail_msg: "dnsmasq_lan_dns currently supports RedHat-family systems only."
+
+- name: Install dnsmasq
+  ansible.builtin.dnf:
+    name: dnsmasq
+    state: present
+
+- name: Ensure dnsmasq configuration directory exists
+  ansible.builtin.file:
+    path: /etc/dnsmasq.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure NebulaIAC LAN DNS
+  ansible.builtin.template:
+    src: nebula-lan.conf.j2
+    dest: /etc/dnsmasq.d/nebula-lan.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart dnsmasq
+
+- name: Validate dnsmasq configuration
+  ansible.builtin.command: dnsmasq --test
+  changed_when: false
+
+- name: Enable and start dnsmasq
+  ansible.builtin.systemd:
+    name: dnsmasq
+    state: started
+    enabled: true
