@@ -45,6 +45,18 @@ resource "opennebula_virtual_machine" "vms" {
     driver   = "qcow2"
   }
 
+  dynamic "disk" {
+    for_each = var.worker_data_disk_enabled ? [1] : []
+
+    content {
+      size            = var.worker_data_disk_size_mb
+      target          = var.worker_data_disk_target
+      driver          = var.worker_data_disk_driver
+      volatile_type   = var.worker_data_disk_volatile_type
+      volatile_format = var.worker_data_disk_volatile_format
+    }
+  }
+
   nic {
     network_id = var.network_id
     model = "virtio"
@@ -65,5 +77,4 @@ resource "opennebula_virtual_machine" "vms" {
 
   on_disk_change = "RECREATE"
 }
-
 

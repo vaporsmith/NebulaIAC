@@ -60,3 +60,39 @@ variable "vm_disk_size_mb" {
   default     = 20480  # 20 GB default
 }
 
+variable "worker_data_disk_enabled" {
+  description = "Attach an additional raw volatile data disk to each kube worker VM for Rook/Ceph OSD use."
+  type        = bool
+  default     = false
+}
+
+variable "worker_data_disk_size_mb" {
+  description = "Size of the additional worker data disk in megabytes. 256000 is roughly 250 GiB-ish depending on OpenNebula interpretation."
+  type        = number
+  default     = 256000
+}
+
+variable "worker_data_disk_target" {
+  description = "Target device for the worker data disk. Expected inside Rocky workers as /dev/vdb when the OS disk is /dev/vda."
+  type        = string
+  default     = "vdb"
+}
+
+variable "worker_data_disk_driver" {
+  description = "OpenNebula disk driver for the worker data disk."
+  type        = string
+  default     = "raw"
+}
+
+variable "worker_data_disk_volatile_type" {
+  description = "OpenNebula volatile disk type for the worker data disk."
+  type        = string
+  default     = "fs"
+}
+
+variable "worker_data_disk_volatile_format" {
+  description = "Filesystem/format selector for the OpenNebula volatile disk. Empty keeps the device raw/unformatted for Rook/Ceph."
+  type        = string
+  default     = ""
+}
+
