@@ -23,6 +23,12 @@
   roles:
     - kube_worker
 
+- name: Prepare Kubernetes workers for Rook Ceph OSDs
+  hosts: kube_workers
+  become: true
+  roles:
+    - kube_rook_ceph_worker_prep
+
 - name: Install MetalLB
   hosts: kube_controllers
   become: true
@@ -35,8 +41,15 @@
   roles:
     - kube_istio
 
+- name: Install Rook Ceph storage
+  hosts: kube_controllers
+  become: true
+  roles:
+    - kube_rook_ceph
+
 - name: Deploy nginx Istio smoke test
   hosts: kube_controllers
   become: true
   roles:
     - kube_smoke_nginx
+

@@ -1,0 +1,48 @@
+---
+- name: Install worker packages useful for Ceph/Rook OSD handling
+  ansible.builtin.dnf:
+    name: "{{ rook_ceph_worker_packages }}"
+    state: present
+
+- name: Check expected Ceph OSD block device
+  ansible.builtin.stat:
+    path: "{{ rook_ceph_osd_device }}"
+  register: rook_ceph_osd_device_stat
+
+- name: Assert expected Ceph OSD block device exists
+  ansible.builtin.assert:
+    that:
+      - rook_ceph_osd_device_stat.stat.exists
+      - rook_ceph_osd_device_stat.stat.isblk
+    fail_msg: "{{ rook_ceph_osd_device }} must exist and be a block device on every kube worker."
+
+- name: Check for filesystem signatures on Ceph OSD device
+  ansible.builtin.command: "wipefs -n {{ rook_ceph_osd_device }}"
+  register: rook_ceph_wipefs_check
+  changed_when: false
+
+- name: Assert Ceph OSD device has no filesystem signatures
+  ansible.builtin.assert:
+    that:
+      - rook_ceph_wipefs_check.stdout | trim == ""
+    fail_msg: "{{ rook_ceph_osd_device }} has filesystem signatures. Rook expects a clean raw device. Output: {{ rook_ceph_wipefs_check.stdout }}"
+
+- name: Read Ceph OSD device size in bytes
+  ansible.builtin.command: "blockdev --getsize64 {{ rook_ceph_osd_device }}"
+  register: rook_ceph_osd_device_size
+  changed_when: false
+
+- name: Assert Ceph OSD device is large enough
+  ansible.builtin.assert:
+    that:
+      - (rook_ceph_osd_device_size.stdout | int) >= (rook_ceph_min_osd_size_gb | int * 1024 * 1024 * 1024)
+    fail_msg: "{{ rook_ceph_osd_device }} is smaller than {{ rook_ceph_min_osd_size_gb }} GiB."
+
+- name: Show worker disk layout
+  ansible.builtin.command: "lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS"
+  register: rook_ceph_lsblk
+  changed_when: false
+
+- name: Display worker disk layout
+  ansible.builtin.debug:
+    var: rook_ceph_lsblk.stdout_lines

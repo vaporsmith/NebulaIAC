@@ -1,0 +1,13 @@
+---
+#- name: Prepare Kubernetes workers for Rook Ceph OSDs
+#  hosts: kube_workers
+#  become: true
+#  roles:
+#    - kube_rook_ceph_worker_prep
+
+- name: Install Rook Ceph storage into Kubernetes
+  hosts: kube_controllers
+  become: true
+  roles:
+    - kube_rook_ceph
+

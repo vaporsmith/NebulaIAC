@@ -1,0 +1,7 @@
+---
+rook_ceph_osd_device: "/dev/vdb"
+rook_ceph_min_osd_size_gb: 240
+
+rook_ceph_worker_packages:
+  - lvm2
+  - cryptsetup

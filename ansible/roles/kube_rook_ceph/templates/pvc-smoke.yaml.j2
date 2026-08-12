@@ -1,0 +1,75 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ rook_ceph_smoke_rbd_pvc_name }}
+  namespace: {{ rook_ceph_smoke_namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ rook_ceph_rbd_storageclass_name }}
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ rook_ceph_smoke_rbd_pod_name }}
+  namespace: {{ rook_ceph_smoke_namespace }}
+spec:
+  restartPolicy: Always
+  containers:
+    - name: smoke
+      image: quay.io/ceph/ceph:v19.2.4
+      command:
+        - /bin/sh
+        - -c
+        - "echo rook-ceph-rbd-smoke > /data/smoke.txt && cat /data/smoke.txt && sleep 3600"
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: {{ rook_ceph_smoke_rbd_pvc_name }}
+
+{% if rook_ceph_cephfs_enabled | bool %}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ rook_ceph_smoke_cephfs_pvc_name }}
+  namespace: {{ rook_ceph_smoke_namespace }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: {{ rook_ceph_cephfs_storageclass_name }}
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ rook_ceph_smoke_cephfs_pod_name }}
+  namespace: {{ rook_ceph_smoke_namespace }}
+spec:
+  restartPolicy: Always
+  containers:
+    - name: smoke
+      image: quay.io/ceph/ceph:v19.2.4 
+      command:
+        - /bin/sh
+        - -c
+        - "echo rook-cephfs-smoke > /data/smoke.txt && cat /data/smoke.txt && sleep 3600"
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: {{ rook_ceph_smoke_cephfs_pvc_name }}
+{% endif %}

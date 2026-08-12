@@ -1,0 +1,316 @@
+---
+- name: Assert kube workers are available for Rook Ceph
+  ansible.builtin.assert:
+    that:
+      - groups['kube_workers'] is defined
+      - groups['kube_workers'] | length >= 3
+    fail_msg: "Rook Ceph expects at least three kube_workers for this lab profile."
+
+- name: Install Rook Ceph CRDs
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    apply -f {{ rook_ceph_manifest_base_url }}/crds.yaml
+  register: rook_ceph_crds_apply
+  changed_when: >
+    'created' in rook_ceph_crds_apply.stdout or
+    'configured' in rook_ceph_crds_apply.stdout
+
+- name: Install Rook Ceph common resources
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    apply -f {{ rook_ceph_manifest_base_url }}/common.yaml
+  register: rook_ceph_common_apply
+  changed_when: >
+    'created' in rook_ceph_common_apply.stdout or
+    'configured' in rook_ceph_common_apply.stdout
+
+- name: Install Rook Ceph CSI operator resources
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    apply -f {{ rook_ceph_manifest_base_url }}/csi-operator.yaml
+  register: rook_ceph_csi_operator_apply
+  changed_when: >
+    'created' in rook_ceph_csi_operator_apply.stdout or
+    'configured' in rook_ceph_csi_operator_apply.stdout
+
+- name: Install Rook Ceph operator
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    apply -f {{ rook_ceph_manifest_base_url }}/operator.yaml
+  register: rook_ceph_operator_apply
+  changed_when: >
+    'created' in rook_ceph_operator_apply.stdout or
+    'configured' in rook_ceph_operator_apply.stdout
+
+- name: Wait for Rook Ceph operator deployment
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    -n {{ rook_ceph_namespace }}
+    rollout status deployment/rook-ceph-operator
+    --timeout=300s
+  changed_when: false
+
+- name: Render Rook Ceph cluster manifest
+  ansible.builtin.template:
+    src: ceph-cluster.yaml.j2
+    dest: /tmp/rook-ceph-cluster.yaml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Apply Rook Ceph cluster manifest
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    apply -f /tmp/rook-ceph-cluster.yaml
+  register: rook_ceph_cluster_apply
+  changed_when: >
+    'created' in rook_ceph_cluster_apply.stdout or
+    'configured' in rook_ceph_cluster_apply.stdout
+
+- name: Wait for Rook Ceph cluster to report Ready
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    -n {{ rook_ceph_namespace }}
+    wait --for=condition=Ready cephcluster/{{ rook_ceph_namespace }}
+    --timeout=1200s
+  register: rook_ceph_cluster_wait
+  changed_when: false
+  failed_when: false
+
+- name: Show CephCluster status if Ready wait did not succeed
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    -n {{ rook_ceph_namespace }}
+    get cephcluster {{ rook_ceph_namespace }} -o yaml
+  register: rook_ceph_cluster_status
+  changed_when: false
+  when: rook_ceph_cluster_wait.rc != 0
+
+- name: Display CephCluster status if Ready wait did not succeed
+  ansible.builtin.debug:
+    var: rook_ceph_cluster_status.stdout_lines
+  when: rook_ceph_cluster_wait.rc != 0
+
+- name: Fail if Rook Ceph cluster did not report Ready
+  ansible.builtin.fail:
+    msg: "Rook Ceph cluster did not report Ready within timeout. Review pods in rook-ceph namespace."
+  when: rook_ceph_cluster_wait.rc != 0
+
+- name: Wait for expected number of OSD pods
+  ansible.builtin.shell: >
+    set -o pipefail &&
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    -n {{ rook_ceph_namespace }}
+    get pods -l app=rook-ceph-osd --no-headers 2>/dev/null
+    | awk '$3 == "Running" { count++ } END { print count+0 }'
+  args:
+    executable: /bin/bash
+  register: rook_ceph_running_osds
+  retries: 60
+  delay: 10
+  until: rook_ceph_running_osds.stdout | int >= rook_ceph_expected_osd_count | int
+  changed_when: false
+
+- name: Render Ceph RBD pool manifest
+  ansible.builtin.template:
+    src: ceph-blockpool.yaml.j2
+    dest: /tmp/rook-ceph-blockpool.yaml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Apply Ceph RBD pool manifest
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    apply -f /tmp/rook-ceph-blockpool.yaml
+  register: rook_ceph_blockpool_apply
+  changed_when: >
+    'created' in rook_ceph_blockpool_apply.stdout or
+    'configured' in rook_ceph_blockpool_apply.stdout
+
+- name: Render Ceph RBD StorageClass manifest
+  ansible.builtin.template:
+    src: storageclass-rbd.yaml.j2
+    dest: /tmp/rook-ceph-rbd-storageclass.yaml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Apply Ceph RBD StorageClass manifest
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    apply -f /tmp/rook-ceph-rbd-storageclass.yaml
+  register: rook_ceph_rbd_storageclass_apply
+  changed_when: >
+    'created' in rook_ceph_rbd_storageclass_apply.stdout or
+    'configured' in rook_ceph_rbd_storageclass_apply.stdout
+
+- name: Render CephFS manifests
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - src: ceph-filesystem.yaml.j2
+      dest: /tmp/rook-ceph-filesystem.yaml
+    - src: storageclass-cephfs.yaml.j2
+      dest: /tmp/rook-cephfs-storageclass.yaml
+  when: rook_ceph_cephfs_enabled | bool
+
+- name: Apply CephFS filesystem manifest
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    apply -f /tmp/rook-ceph-filesystem.yaml
+  register: rook_ceph_filesystem_apply
+  changed_when: >
+    'created' in rook_ceph_filesystem_apply.stdout or
+    'configured' in rook_ceph_filesystem_apply.stdout
+  when: rook_ceph_cephfs_enabled | bool
+
+- name: Wait for CephFS MDS deployment
+  ansible.builtin.shell: >
+    set -o pipefail &&
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    -n {{ rook_ceph_namespace }}
+    get pods -l app=rook-ceph-mds --no-headers 2>/dev/null
+    | awk '$3 == "Running" { count++ } END { print count+0 }'
+  args:
+    executable: /bin/bash
+  register: rook_ceph_running_mds
+  retries: 60
+  delay: 10
+  until: rook_ceph_running_mds.stdout | int >= 1
+  changed_when: false
+  when: rook_ceph_cephfs_enabled | bool
+
+- name: Apply CephFS StorageClass manifest
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    apply -f /tmp/rook-cephfs-storageclass.yaml
+  register: rook_ceph_cephfs_storageclass_apply
+  changed_when: >
+    'created' in rook_ceph_cephfs_storageclass_apply.stdout or
+    'configured' in rook_ceph_cephfs_storageclass_apply.stdout
+  when: rook_ceph_cephfs_enabled | bool
+
+- name: Render PVC smoke test manifests
+  ansible.builtin.template:
+    src: pvc-smoke.yaml.j2
+    dest: /tmp/rook-ceph-pvc-smoke.yaml
+    owner: root
+    group: root
+    mode: "0644"
+  when: rook_ceph_smoke_test_enabled | bool
+
+- name: Apply PVC smoke test manifests
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    apply -f /tmp/rook-ceph-pvc-smoke.yaml
+  register: rook_ceph_smoke_apply
+  changed_when: >
+    'created' in rook_ceph_smoke_apply.stdout or
+    'configured' in rook_ceph_smoke_apply.stdout
+  when: rook_ceph_smoke_test_enabled | bool
+
+- name: Wait for RBD smoke PVC to bind
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    -n {{ rook_ceph_smoke_namespace }}
+    wait --for=jsonpath='{.status.phase}'=Bound
+    pvc/{{ rook_ceph_smoke_rbd_pvc_name }}
+    --timeout=300s
+  changed_when: false
+  when: rook_ceph_smoke_test_enabled | bool
+
+- name: Wait for RBD smoke pod to be Ready
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    -n {{ rook_ceph_smoke_namespace }}
+    wait --for=condition=Ready
+    pod/{{ rook_ceph_smoke_rbd_pod_name }}
+    --timeout=300s
+  changed_when: false
+  when: rook_ceph_smoke_test_enabled | bool
+
+- name: Validate RBD smoke file
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    -n {{ rook_ceph_smoke_namespace }}
+    exec {{ rook_ceph_smoke_rbd_pod_name }}
+    -- cat /data/smoke.txt
+  register: rook_ceph_rbd_smoke_result
+  changed_when: false
+  when: rook_ceph_smoke_test_enabled | bool
+
+- name: Display RBD smoke result
+  ansible.builtin.debug:
+    var: rook_ceph_rbd_smoke_result.stdout_lines
+  when: rook_ceph_smoke_test_enabled | bool
+
+- name: Wait for CephFS smoke PVC to bind
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    -n {{ rook_ceph_smoke_namespace }}
+    wait --for=jsonpath='{.status.phase}'=Bound
+    pvc/{{ rook_ceph_smoke_cephfs_pvc_name }}
+    --timeout=300s
+  changed_when: false
+  when:
+    - rook_ceph_smoke_test_enabled | bool
+    - rook_ceph_cephfs_enabled | bool
+
+- name: Wait for CephFS smoke pod to be Ready
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    -n {{ rook_ceph_smoke_namespace }}
+    wait --for=condition=Ready
+    pod/{{ rook_ceph_smoke_cephfs_pod_name }}
+    --timeout=300s
+  changed_when: false
+  when:
+    - rook_ceph_smoke_test_enabled | bool
+    - rook_ceph_cephfs_enabled | bool
+
+- name: Validate CephFS smoke file
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    -n {{ rook_ceph_smoke_namespace }}
+    exec {{ rook_ceph_smoke_cephfs_pod_name }}
+    -- cat /data/smoke.txt
+  register: rook_ceph_cephfs_smoke_result
+  changed_when: false
+  when:
+    - rook_ceph_smoke_test_enabled | bool
+    - rook_ceph_cephfs_enabled | bool
+
+- name: Display CephFS smoke result
+  ansible.builtin.debug:
+    var: rook_ceph_cephfs_smoke_result.stdout_lines
+  when:
+    - rook_ceph_smoke_test_enabled | bool
+    - rook_ceph_cephfs_enabled | bool
+
+- name: Show final Rook Ceph status
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    -n {{ rook_ceph_namespace }}
+    get pods -o wide
+  register: rook_ceph_final_pods
+  changed_when: false
+
+- name: Display final Rook Ceph pods
+  ansible.builtin.debug:
+    var: rook_ceph_final_pods.stdout_lines
+
+- name: Show Kubernetes StorageClasses
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ rook_ceph_kubeconfig }}
+    get storageclass
+  register: rook_ceph_storageclasses
+  changed_when: false
+
+- name: Display Kubernetes StorageClasses
+  ansible.builtin.debug:
+    var: rook_ceph_storageclasses.stdout_lines

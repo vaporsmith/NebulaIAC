@@ -1,0 +1,38 @@
+---
+rook_ceph_version: "v1.19.6"
+rook_ceph_namespace: "rook-ceph"
+rook_ceph_kubeconfig: "/etc/kubernetes/admin.conf"
+
+rook_ceph_manifest_base_url: "https://raw.githubusercontent.com/rook/rook/{{ rook_ceph_version }}/deploy/examples"
+
+rook_ceph_osd_device: "/dev/vdb"
+rook_ceph_data_dir_host_path: "/var/lib/rook"
+
+# Keep this conservative and production-like enough for the lab.
+# With 5 x 250G OSDs:
+#   size 2 ≈ 625G usable
+#   size 3 ≈ 416G usable
+rook_ceph_replication_size: 3
+
+rook_ceph_expected_osd_count: "{{ groups['kube_workers'] | length }}"
+
+rook_ceph_ceph_image: "quay.io/ceph/ceph:v19.2.4"
+
+rook_ceph_mon_count: 3
+rook_ceph_mgr_count: 2
+
+rook_ceph_rbd_pool_name: "replicapool"
+rook_ceph_rbd_storageclass_name: "ceph-rbd"
+rook_ceph_rbd_make_default: true
+
+rook_ceph_cephfs_enabled: true
+rook_ceph_cephfs_name: "cephfs"
+rook_ceph_cephfs_data_pool_name: "data0"
+rook_ceph_cephfs_storageclass_name: "cephfs"
+
+rook_ceph_smoke_test_enabled: true
+rook_ceph_smoke_namespace: "default"
+rook_ceph_smoke_rbd_pvc_name: "rook-ceph-rbd-smoke-pvc"
+rook_ceph_smoke_rbd_pod_name: "rook-ceph-rbd-smoke"
+rook_ceph_smoke_cephfs_pvc_name: "rook-cephfs-smoke-pvc"
+rook_ceph_smoke_cephfs_pod_name: "rook-cephfs-smoke"

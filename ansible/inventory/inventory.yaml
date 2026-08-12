@@ -11,10 +11,12 @@ all:
     kube_workers:
       hosts:
         kube-worker-1:
-          ansible_host: 192.168.50.54
+          ansible_host: 192.168.50.56
         kube-worker-2:
-          ansible_host: 192.168.50.55
-        kube-worker-3:
           ansible_host: 192.168.50.52
+        kube-worker-3:
+          ansible_host: 192.168.50.55
         kube-worker-4:
           ansible_host: 192.168.50.53
+        kube-worker-5:
+          ansible_host: 192.168.50.54
