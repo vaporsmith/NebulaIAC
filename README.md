@@ -1,110 +1,347 @@
 # 🌌 NebulaIAC
 
-NebulaIAC is a personal homelab Infrastructure-as-Code project for experimenting with reusable automation patterns across private-cloud infrastructure, Linux systems, Ansible configuration management, and OpenTofu/Terraform-based provisioning.
+NebulaIAC is a personal infrastructure-as-code lab for building and operating a small private cloud and Kubernetes platform on top of OpenNebula.
 
-This repository is not a turnkey product or mature platform. It is an active engineering lab used to explore how modular infrastructure code, generated inventory, stack-isolated service definitions, and reusable automation can make small-scale infrastructure easier to reproduce, extend, and operate.
+It combines OpenTofu/Terraform, Ansible, Kubernetes, MetalLB, Istio, local DNS, and Rook-Ceph into a reproducible homelab platform. The project is not a turnkey product. It is a working reference implementation for learning, experimentation, and demonstrating practical infrastructure engineering patterns.
 
-## What This Demonstrates
+## What this project demonstrates
 
-NebulaIAC reflects my approach to platform engineering:
+NebulaIAC focuses on the kind of infrastructure work that sits between classic systems administration, platform engineering, DevOps, and private-cloud operations:
 
-* Prefer reusable infrastructure patterns over one-off manual setup.
-* Keep service stacks isolated while allowing them to contribute to shared operational state.
-* Generate configuration and inventory from source-controlled definitions instead of manually maintaining static files.
-* Use wrapper scripts to simplify common infrastructure workflows without hiding the underlying tools.
-* Organize infrastructure code so it can evolve toward on-prem, private-cloud, cloud, or hybrid deployment models.
+- OpenNebula-backed VM provisioning
+- Dynamic Ansible inventory generation from infrastructure stacks
+- Kubernetes cluster bootstrap on Rocky Linux nodes
+- Container runtime and node preparation with Ansible
+- CNI installation and cluster networking
+- MetalLB-based `LoadBalancer` support on a homelab LAN
+- Istio ingress for HTTP service exposure
+- Local wildcard DNS for lab service names
+- Rook-Ceph persistent storage using raw worker disks
+- Reusable Ansible roles organized around platform capabilities
 
-## Project Goals
+The current implementation is opinionated for a homelab/private-cloud environment, but the patterns are intentionally portable.
 
-* Build a practical homelab framework for provisioning VMs and platform services.
-* Use OpenTofu/Terraform for infrastructure provisioning.
-* Use Ansible for configuration management and post-deployment automation.
-* Support modular service stacks that can be reused, combined, or extended.
-* Generate centralized Ansible inventory from per-stack host definitions.
-* Explore patterns that could later support stronger security, image hardening, secrets management, observability, and enterprise service integration.
-
-## Features
-
-* OpenTofu/Terraform-powered infrastructure provisioning.
-* Ansible-driven configuration management and post-deployment automation.
-* Dynamic inventory generation from stack-local host definitions.
-* Location-aware scripts for managing infrastructure from different working directories.
-* Stack-isolated IaC directories for managing multiple service environments.
-* Centralized Ansible structure for roles, inventory, configuration, variables, and SSH material.
-* Designed with future flexibility for air-gapped, on-premises, private-cloud, public-cloud, or hybrid lab environments.
-
-## Directory Overview
+## Current platform stack
 
 ```text
-nebula/
-├── ansible/              # Roles, inventory, config, vars, and SSH material
-├── infrastructure/       # Per-stack OpenTofu/Terraform code and host definitions
-├── packer/               # Image build templates planned for future use
-├── scripts/              # CLI wrappers for infrastructure workflows
-├── generate_inventory.py # Merges stack host YAML into central Ansible inventory
-└── README.md             # Project documentation
+OpenNebula
+  └── Rocky Linux VMs
+      └── Kubernetes
+          ├── Flannel CNI
+          ├── MetalLB
+          ├── Istio ingress
+          ├── Rook-Ceph
+          │   ├── ceph-rbd StorageClass
+          │   └── cephfs StorageClass
+          └── Application/service workloads
 ```
 
-## Usage
+## Repository layout
 
-Provision a stack:
+```text
+NebulaIAC/
+├── ansible/
+│   ├── inventory/
+│   ├── playbooks/
+│   │   ├── kube.yml
+│   │   └── dns.yml
+│   ├── roles/
+│   │   ├── dnsmasq_lan_dns/
+│   │   ├── kube_cni/
+│   │   ├── kube_common/
+│   │   ├── kube_control_plane/
+│   │   ├── kube_istio/
+│   │   ├── kube_metallb/
+│   │   ├── kube_rook_ceph/
+│   │   ├── kube_rook_ceph_worker_prep/
+│   │   ├── kube_smoke_nginx/
+│   │   └── kube_worker/
+│   └── ansible.cfg
+├── infrastructure/
+│   └── <stack>/
+│       ├── main.tf
+│       ├── variables.tf
+│       ├── terraform.tfvars
+│       ├── outputs.tf
+│       └── inventory-hosts.yaml
+├── packer/
+├── scripts/
+│   └── generate_inventory.py
+├── README.md
+└── LICENSE
+```
+
+## Infrastructure workflow
+
+Each infrastructure stack lives under `infrastructure/<stack>/`.
+
+A stack provisions its own resources and writes an `inventory-hosts.yaml` file containing host metadata. The inventory generator merges these stack-level files into the central Ansible inventory.
+
+Typical workflow:
+
+```bash
+cd infrastructure/<stack>
+tofu init
+tofu plan
+tofu apply
+```
+
+Then regenerate inventory if needed:
+
+```bash
+python3 scripts/generate_inventory.py
+```
+
+Or use the project helper script when appropriate:
 
 ```bash
 ./scripts/manage.py <stack-name> apply
 ```
 
-Generate the central Ansible inventory manually:
+## Kubernetes workflow
+
+The Kubernetes playbook builds the cluster and then layers platform services on top.
 
 ```bash
-./generate_inventory.py
+ansible-playbook ansible/playbooks/kube.yml
 ```
 
-Run an Ansible playbook against provisioned hosts:
-
-```bash
-ansible-playbook -i ansible/inventory/inventory.yaml playbook.yaml
-```
-
-Each stack defines its own host group and machine metadata under:
+The intended role order is:
 
 ```text
-infrastructure/<stack>/inventory-hosts.yaml
+kube_common
+  ↓
+kube_control_plane
+  ↓
+kube_cni
+  ↓
+kube_worker
+  ↓
+kube_rook_ceph_worker_prep
+  ↓
+kube_metallb
+  ↓
+kube_istio
+  ↓
+kube_rook_ceph
+  ↓
+kube_smoke_nginx
 ```
 
-## Current Status
+### Why storage runs after worker join
 
-NebulaIAC is under active development and should be treated as a prototype/reference implementation, not a production-ready platform.
+Rook-Ceph consumes raw block devices from Kubernetes worker nodes. Every worker that appears in the Ansible `kube_workers` group must also exist as a Kubernetes node before the Ceph cluster is created.
 
-Current limitations include:
+The `kube_rook_ceph_worker_prep` role verifies the OSD disk layout first. The `kube_rook_ceph` role then creates the Rook-Ceph resources from the controller.
 
-* Security hardening is planned but incomplete.
-* Certificate and SSL/TLS management are not yet implemented.
-* Hardened Packer-built images are planned but not complete.
-* No integrated secrets manager is currently wired in.
-* Enterprise services such as DNS, identity management, logging, monitoring, and service discovery are not yet fully implemented.
-* The project currently assumes Linux and operator familiarity with CLI tooling, OpenTofu/Terraform, Ansible, and systems administration.
+## Persistent storage
 
-## Security Direction
+Rook-Ceph provides Kubernetes-native persistent storage.
 
-NebulaIAC is being structured with future security and compliance automation in mind, but current deployments should not be considered secure by default.
+The current lab profile uses one raw data disk per Kubernetes worker:
 
-Planned or envisioned work includes:
+```text
+vda = operating system disk
+vdb = raw Rook/Ceph OSD disk
+```
 
-* Hardened VM image builds with Packer.
-* Secrets management using Vault, OpenBao, SOPS, or a similar tool.
-* Certificate-based trust and automated certificate management.
-* HTTPS-enabled service endpoints.
-* Security compliance automation aligned to benchmarks such as STIG or CIS.
-* Logging, monitoring, and identity integration patterns for reusable service stacks.
+The Rook-Ceph role creates:
 
-## Relationship to OpenNebula
+```text
+ceph-rbd (default)   rook-ceph.rbd.csi.ceph.com
+cephfs               rook-ceph.cephfs.csi.ceph.com
+```
 
-This project uses OpenNebula as one possible VM orchestration target, but it is not affiliated with or contributing to OpenNebula core development.
+Use `ceph-rbd` for normal single-writer application storage, including most database workloads.
 
-## Contributing / Feedback
+Use `cephfs` for shared filesystem workloads that need `ReadWriteMany`.
 
-Suggestions, forks, and feedback are welcome. This is primarily a personal engineering lab, but I am happy to discuss patterns, tradeoffs, and improvements with others working on similar infrastructure automation problems.
+Example validation:
+
+```bash
+kubectl get storageclass
+kubectl get pvc
+kubectl -n rook-ceph get pods -o wide
+kubectl -n rook-ceph get cephcluster rook-ceph -o wide
+```
+
+Expected StorageClass shape:
+
+```text
+NAME                 PROVISIONER                     RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION
+ceph-rbd (default)   rook-ceph.rbd.csi.ceph.com      Delete          WaitForFirstConsumer   true
+cephfs               rook-ceph.cephfs.csi.ceph.com   Delete          Immediate              true
+```
+
+## Networking and ingress
+
+The cluster uses:
+
+- Flannel for pod networking
+- MetalLB for LAN `LoadBalancer` IPs
+- Istio for ingress routing
+- dnsmasq for local lab DNS
+
+A simple smoke workload validates the service path:
+
+```text
+browser/client
+  ↓
+local DNS
+  ↓
+Istio ingress gateway
+  ↓
+Kubernetes service
+  ↓
+nginx smoke pods
+```
+
+The repository avoids documenting real private network values in public examples. Use documentation-safe example ranges when writing public docs.
+
+## Current Ansible roles
+
+### `kube_common`
+
+Prepares Rocky Linux nodes for Kubernetes.
+
+Responsibilities include:
+
+- common package installation
+- kernel module configuration
+- sysctl configuration
+- swap disablement
+- containerd installation/configuration
+- Kubernetes package repository setup
+- kubelet configuration
+- SELinux posture management
+
+### `kube_control_plane`
+
+Initializes the Kubernetes control plane and prepares kubeconfig access.
+
+### `kube_cni`
+
+Installs and configures the Kubernetes CNI.
+
+### `kube_worker`
+
+Joins worker nodes to the Kubernetes cluster.
+
+### `kube_metallb`
+
+Installs MetalLB and configures the lab address pool.
+
+### `kube_istio`
+
+Installs Istio and waits for the ingress gateway.
+
+### `kube_rook_ceph_worker_prep`
+
+Preflights worker disks before Rook-Ceph consumes them.
+
+This role verifies that the configured OSD device exists, is a block device, is large enough, and has no filesystem signatures.
+
+### `kube_rook_ceph`
+
+Installs Rook-Ceph, creates the Ceph cluster, configures RBD/CephFS storage classes, and runs PVC smoke tests.
+
+Important implementation note: Rook v1.19 requires the CSI operator resources during install. The working install order is:
+
+```text
+crds.yaml
+common.yaml
+csi-operator.yaml
+operator.yaml
+CephCluster
+```
+
+### `kube_smoke_nginx`
+
+Deploys a simple nginx workload to validate ingress and service routing.
+
+### `dnsmasq_lan_dns`
+
+Configures local DNS for lab service names.
+
+## Security posture
+
+NebulaIAC is a lab and reference implementation, not a hardened production platform.
+
+The project is designed with security-conscious architecture in mind, but the current implementation should not be treated as secure by default.
+
+Planned or future hardening areas include:
+
+- hardened base images
+- tighter host firewall policy
+- certificate automation
+- secrets management
+- stronger identity integration
+- policy-as-code
+- image scanning
+- audit logging
+- backup and disaster recovery
+- tighter supply-chain controls
+
+Do not publish secrets, real credentials, sensitive inventory, private keys, or environment-specific values.
+
+## Public repository hygiene
+
+This repository is public-facing. Keep examples sanitized.
+
+Avoid committing:
+
+- real credentials
+- private keys
+- tokens
+- real internal IP plans where unnecessary
+- generated state files
+- local inventory containing sensitive host details
+- logs containing secrets or environment-specific identifiers
+
+Prefer committing:
+
+- reusable role code
+- sanitized examples
+- documentation-safe IP ranges
+- templates
+- defaults that are safe for public review
+
+## Limitations
+
+- This is an evolving homelab, not a commercial product.
+- The automation assumes operator familiarity with Linux, OpenNebula, OpenTofu/Terraform, Ansible, Kubernetes, and Ceph.
+- Some roles are intentionally opinionated for this lab.
+- Destructive storage operations should be reviewed carefully before use.
+- Rook-Ceph cleanup and OSD wiping should be deliberate and targeted only at intended devices.
+- This project is not affiliated with OpenNebula, Kubernetes, Istio, MetalLB, Rook, or Ceph.
+
+## Roadmap ideas
+
+Near-term areas of interest:
+
+- move more service configuration into reusable roles
+- add OpenProject or similar application workloads using Ceph-backed PVCs
+- add better Ceph toolbox/dashboard handling
+- explicitly disable or document telemetry posture
+- add backup/restore workflows for persistent workloads
+- add certificate automation for ingress
+- improve public-safe examples and sample variables
+- add validation playbooks for cluster health
+
+Longer-term areas of interest:
+
+- hardened image builds
+- GitOps-style deployment patterns
+- secrets management
+- observability stack
+- policy-as-code
+- better CI validation for role syntax and formatting
 
 ## License
 
-MIT License — use freely, attribute respectfully.
+GPL-3.0. See `LICENSE`.
+
+## Status
+
+NebulaIAC is a personal learning and demonstration platform. It is useful, reproducible, and actively evolving, but should be treated as a reference architecture and lab system rather than a supported product.
+
