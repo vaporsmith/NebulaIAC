@@ -1,5 +1,4 @@
 # 🌌 NebulaIAC
-
 NebulaIAC is a personal infrastructure-as-code lab for building and operating a small private cloud and Kubernetes platform on top of OpenNebula.
 
 It combines OpenTofu/Terraform, Ansible, Kubernetes, MetalLB, Istio, local DNS, and Rook-Ceph into a reproducible homelab platform. The project is not a turnkey product. It is a working reference implementation for learning, experimentation, and demonstrating practical infrastructure engineering patterns.
@@ -66,6 +65,7 @@ NebulaIAC/
 │       └── inventory-hosts.yaml
 ├── packer/
 ├── scripts/
+│   ├── manage.py
 │   └── generate_inventory.py
 ├── README.md
 └── LICENSE
@@ -75,9 +75,38 @@ NebulaIAC/
 
 Each infrastructure stack lives under `infrastructure/<stack>/`.
 
-A stack provisions its own resources and writes an `inventory-hosts.yaml` file containing host metadata. The inventory generator merges these stack-level files into the central Ansible inventory.
+The preferred workflow is to use the project management wrapper:
 
-Typical workflow:
+```bash
+./scripts/manage.py <stack-name> apply
+```
+
+`manage.py` is the normal entry point for infrastructure operations because it keeps Terraform/OpenTofu actions and Ansible inventory generation tied together. After a stack is applied, the project inventory can be regenerated from the stack-level `inventory-hosts.yaml` files so newly created VMs are available to Ansible without a separate manual bookkeeping step.
+
+A stack still contains standard OpenTofu/Terraform files:
+
+```text
+infrastructure/<stack>/
+├── main.tf
+├── variables.tf
+├── terraform.tfvars
+├── outputs.tf
+└── inventory-hosts.yaml
+```
+
+Under the hood, stack-level infrastructure output feeds the generated Ansible inventory:
+
+```text
+OpenTofu/Terraform stack
+  ↓
+inventory-hosts.yaml
+  ↓
+scripts/generate_inventory.py
+  ↓
+ansible/inventory/inventory.yaml
+```
+
+Use direct OpenTofu/Terraform commands only when intentionally bypassing the wrapper for debugging or one-off inspection:
 
 ```bash
 cd infrastructure/<stack>
@@ -86,16 +115,10 @@ tofu plan
 tofu apply
 ```
 
-Then regenerate inventory if needed:
+If direct commands are used, regenerate the central Ansible inventory afterward:
 
 ```bash
 python3 scripts/generate_inventory.py
-```
-
-Or use the project helper script when appropriate:
-
-```bash
-./scripts/manage.py <stack-name> apply
 ```
 
 ## Kubernetes workflow
