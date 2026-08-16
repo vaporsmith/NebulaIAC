@@ -1,0 +1,210 @@
+---
+- name: Assert the OpenBao platform prerequisites
+  ansible.builtin.assert:
+    that:
+      - openbao_replicas | int >= 3
+      - groups['kube_workers'] is defined
+      - groups['kube_workers'] | length >= openbao_replicas | int
+      - not (openbao_require_network_policy_enforcement | bool) or (kube_network_policy_enforced | bool)
+      - not (openbao_manage_initialization | bool) or openbao_age_recipient | length > 0
+      - openbao_key_shares | int >= openbao_key_threshold | int
+      - openbao_key_threshold | int >= 2
+    fail_msg: >-
+      OpenBao requires at least three workers and three replicas. NetworkPolicy
+      enforcement is also required by default; Flannel alone does not enforce
+      it. Deploy and verify a policy-enforcing CNI, then set
+      kube_network_policy_enforced=true.
+
+- name: Verify the Ceph RBD StorageClass exists
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ openbao_kubeconfig }}
+    get storageclass {{ openbao_storage_class }}
+  changed_when: false
+
+- name: Verify the shared Helm installation
+  ansible.builtin.command: helm version --short
+  register: openbao_helm_version
+  changed_when: false
+  failed_when: >-
+    openbao_helm_version.rc != 0 or
+    openbao_required_helm_version not in openbao_helm_version.stdout
+
+- name: Ensure the OpenBao namespace exists
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ openbao_kubeconfig }}
+    create namespace {{ openbao_namespace }}
+    --dry-run=client -o yaml
+  register: openbao_namespace_manifest
+  changed_when: false
+
+- name: Apply the OpenBao namespace
+  ansible.builtin.command:
+    cmd: "kubectl --kubeconfig={{ openbao_kubeconfig }} apply -f -"
+    stdin: "{{ openbao_namespace_manifest.stdout }}"
+  register: openbao_namespace_apply
+  changed_when: >-
+    'created' in openbao_namespace_apply.stdout or
+    'configured' in openbao_namespace_apply.stdout
+
+- name: Label the OpenBao namespace
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ openbao_kubeconfig }}
+    label namespace {{ openbao_namespace }}
+    kubernetes.io/metadata.name={{ openbao_namespace }}
+    istio-injection={{ openbao_istio_injection }}
+    pod-security.kubernetes.io/enforce=restricted
+    pod-security.kubernetes.io/audit=restricted
+    pod-security.kubernetes.io/warn=restricted
+    --overwrite
+  register: openbao_namespace_labels
+  changed_when: "'not labeled' not in openbao_namespace_labels.stdout"
+
+- name: Verify the externally bootstrapped OpenBao TLS Secret exists
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ openbao_kubeconfig }}
+    -n {{ openbao_namespace }} get secret {{ openbao_tls_secret_name }}
+  changed_when: false
+
+- name: Verify the OpenBao TLS Secret contains all required keys
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ openbao_kubeconfig }}
+    -n {{ openbao_namespace }} get secret {{ openbao_tls_secret_name }}
+    -o jsonpath={.data.{{ item | replace('.', '\\.') }}}
+  loop:
+    - tls.crt
+    - tls.key
+    - ca.crt
+  register: openbao_tls_secret_keys
+  changed_when: false
+  failed_when: openbao_tls_secret_keys.stdout | length == 0
+
+- name: Add the official OpenBao Helm repository
+  ansible.builtin.command: >
+    helm repo add {{ openbao_chart_repository_name }}
+    {{ openbao_chart_repository_url }} --force-update
+  register: openbao_helm_repo_add
+  changed_when: "'has been added' in openbao_helm_repo_add.stdout"
+
+- name: Update the OpenBao Helm repository metadata
+  ansible.builtin.command: "helm repo update {{ openbao_chart_repository_name }}"
+  changed_when: false
+
+- name: Render the OpenBao Helm values
+  ansible.builtin.template:
+    src: values.yaml.j2
+    dest: "{{ openbao_rendered_values_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Render the OpenBao NetworkPolicies
+  ansible.builtin.template:
+    src: network-policy.yaml.j2
+    dest: "{{ openbao_rendered_network_policy_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Install or upgrade OpenBao
+  ansible.builtin.command: >
+    helm upgrade --install {{ openbao_release_name }}
+    {{ openbao_chart_repository_name }}/openbao
+    --version {{ openbao_chart_version }}
+    --namespace {{ openbao_namespace }}
+    --values {{ openbao_rendered_values_path }}
+    --kubeconfig {{ openbao_kubeconfig }}
+    --timeout 10m
+  register: openbao_helm_upgrade
+  changed_when: >-
+    'has been upgraded' in openbao_helm_upgrade.stdout or
+    'has been installed' in openbao_helm_upgrade.stdout
+
+- name: Apply OpenBao NetworkPolicies
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ openbao_kubeconfig }}
+    apply -f {{ openbao_rendered_network_policy_path }}
+  register: openbao_network_policy_apply
+  changed_when: >-
+    'created' in openbao_network_policy_apply.stdout or
+    'configured' in openbao_network_policy_apply.stdout
+
+- name: Wait for all OpenBao pods to be created
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ openbao_kubeconfig }}
+    -n {{ openbao_namespace }}
+    get pod {{ openbao_release_name }}-{{ (openbao_replicas | int) - 1 }}
+  register: openbao_last_pod
+  retries: 30
+  delay: 10
+  until: openbao_last_pod.rc == 0
+  changed_when: false
+
+- name: Read OpenBao initialization and seal status
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ openbao_kubeconfig }}
+    -n {{ openbao_namespace }} exec {{ openbao_release_name }}-0 --
+    bao status -format=json
+  register: openbao_status
+  changed_when: false
+  failed_when: openbao_status.rc not in [0, 2]
+
+- name: Parse OpenBao status
+  ansible.builtin.set_fact:
+    openbao_status_data: "{{ openbao_status.stdout | from_json }}"
+
+- name: Initialize OpenBao and preserve encrypted recovery material
+  ansible.builtin.include_tasks: initialize.yml
+  when: openbao_manage_initialization | bool
+
+- name: Decrypt existing initialization material for a sealed cluster
+  ansible.builtin.command:
+    cmd: >-
+      sops --decrypt --input-type json --output-type json
+      {{ openbao_local_recovery_file }}
+  register: openbao_decrypted_initialization
+  delegate_to: localhost
+  become: false
+  environment:
+    SOPS_AGE_KEY_FILE: "{{ openbao_age_identity_file }}"
+  changed_when: false
+  no_log: true
+  when:
+    - openbao_manage_initialization | bool
+    - openbao_initialization_material is not defined
+    - openbao_status_data.sealed | bool
+
+- name: Load existing initialization material into memory
+  ansible.builtin.set_fact:
+    openbao_initialization_material: >-
+      {{ openbao_decrypted_initialization.stdout | from_json }}
+  no_log: true
+  when:
+    - openbao_decrypted_initialization is defined
+    - not (openbao_decrypted_initialization.skipped | default(false))
+
+- name: Unseal OpenBao Raft members when required
+  ansible.builtin.include_tasks: unseal.yml
+  loop: "{{ range(0, openbao_replicas | int) | list }}"
+  loop_control:
+    loop_var: openbao_member_index
+  vars:
+    openbao_member: "{{ openbao_release_name }}-{{ openbao_member_index }}"
+  when:
+    - openbao_manage_initialization | bool
+    - openbao_initialization_material is defined
+
+- name: Wait for the OpenBao StatefulSet to become ready
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ openbao_kubeconfig }}
+    -n {{ openbao_namespace }} rollout status
+    statefulset/{{ openbao_release_name }} --timeout=300s
+  changed_when: false
+  when: openbao_manage_initialization | bool
+
+- name: Display the guarded next step
+  ansible.builtin.debug:
+    msg:
+      - "OpenBao {{ openbao_chart_version }} is deployed with HA Raft storage and TLS."
+      - "Initialization and unseal state were reconciled idempotently."
+      - "Encrypted recovery material is retained at {{ openbao_local_recovery_file }}."
+

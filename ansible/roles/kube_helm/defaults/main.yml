@@ -1,0 +1,7 @@
+---
+kube_helm_version: "v3.19.0"
+kube_helm_arch: "amd64"
+kube_helm_install_path: "/usr/local/bin/helm"
+kube_helm_download_base_url: "https://get.helm.sh"
+kube_helm_archive_name: "helm-{{ kube_helm_version }}-linux-{{ kube_helm_arch }}.tar.gz"
+

@@ -1,0 +1,144 @@
+global:
+  enabled: true
+  tlsDisable: false
+
+injector:
+  enabled: false
+
+csi:
+  enabled: false
+
+server:
+  image:
+    registry: quay.io
+    repository: openbao/openbao
+    tag: "2.6.1"
+    pullPolicy: IfNotPresent
+
+  updateStrategyType: OnDelete
+  podManagementPolicy: Parallel
+
+  extraEnvironmentVars:
+    BAO_CACERT: "{{ openbao_tls_mount_path }}/ca.crt"
+    BAO_TLS_SERVER_NAME: "{{ openbao_tls_server_name }}"
+
+  statefulSet:
+    securityContext:
+      pod:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      container:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+
+  resources:
+    requests:
+      cpu: {{ openbao_cpu_request | quote }}
+      memory: {{ openbao_memory_request | quote }}
+    limits:
+      cpu: {{ openbao_cpu_limit | quote }}
+      memory: {{ openbao_memory_limit | quote }}
+
+  volumes:
+    - name: openbao-server-tls
+      secret:
+        secretName: {{ openbao_tls_secret_name }}
+        defaultMode: 0440
+
+  volumeMounts:
+    - name: openbao-server-tls
+      mountPath: {{ openbao_tls_mount_path }}
+      readOnly: true
+
+  affinity: |
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: openbao
+              app.kubernetes.io/instance: {{ openbao_release_name }}
+              component: server
+          topologyKey: kubernetes.io/hostname
+
+  dataStorage:
+    enabled: true
+    size: {{ openbao_data_storage_size }}
+    storageClass: {{ openbao_storage_class }}
+    accessMode: ReadWriteOnce
+
+  auditStorage:
+    enabled: true
+    size: {{ openbao_audit_storage_size }}
+    storageClass: {{ openbao_storage_class }}
+    accessMode: ReadWriteOnce
+
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+
+  standalone:
+    enabled: false
+
+  ha:
+    enabled: true
+    replicas: {{ openbao_replicas }}
+    disruptionBudget:
+      enabled: true
+      maxUnavailable: 1
+    raft:
+      enabled: true
+      setNodeId: true
+      config: |
+        ui = false
+        disable_mlock = true
+
+        listener "tcp" {
+          address            = "[::]:8200"
+          cluster_address    = "[::]:8201"
+          tls_disable        = 0
+          tls_cert_file      = "{{ openbao_tls_mount_path }}/tls.crt"
+          tls_key_file       = "{{ openbao_tls_mount_path }}/tls.key"
+          tls_client_ca_file = "{{ openbao_tls_mount_path }}/ca.crt"
+        }
+
+        storage "raft" {
+          path = "/openbao/data"
+
+{% for peer_number in range(openbao_replicas | int) %}
+          retry_join {
+            leader_api_addr         = "https://{{ openbao_release_name }}-{{ peer_number }}.{{ openbao_release_name }}-internal:8200"
+            leader_tls_servername   = "{{ openbao_tls_server_name }}"
+            leader_ca_cert_file     = "{{ openbao_tls_mount_path }}/ca.crt"
+            leader_client_cert_file = "{{ openbao_tls_mount_path }}/tls.crt"
+            leader_client_key_file  = "{{ openbao_tls_mount_path }}/tls.key"
+          }
+{% endfor %}
+        }
+
+        service_registration "kubernetes" {}
+
+  networkPolicy:
+    enabled: false
+
+  service:
+    enabled: true
+    type: ClusterIP
+    active:
+      enabled: true
+    standby:
+      enabled: true
+    instanceSelector:
+      enabled: true
+
+ui:
+  enabled: false
+
+snapshotAgent:
+  enabled: false
+

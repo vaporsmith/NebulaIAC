@@ -1,4 +1,11 @@
 ---
+- name: Install local secret-administration tools
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - sops_cli
+
 - name: Prepare all Kubernetes nodes
   hosts: kube_controllers:kube_workers
   become: true
@@ -46,6 +53,15 @@
   become: true
   roles:
     - kube_rook_ceph
+
+- name: Install OpenBao secrets management
+  hosts: kube_controllers
+  become: true
+  serial: 1
+  roles:
+    - sops_cli
+    - kube_helm
+    - kube_openbao
 
 - name: Deploy nginx Istio smoke test
   hosts: kube_controllers

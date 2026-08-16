@@ -1,0 +1,51 @@
+---
+- name: Check whether the SOPS binary exists
+  ansible.builtin.stat:
+    path: "{{ sops_cli_install_path }}"
+  register: sops_cli_binary
+  become: true
+
+- name: Read the installed SOPS version
+  ansible.builtin.command:
+    argv:
+      - "{{ sops_cli_install_path }}"
+      - --version
+  register: sops_cli_installed_version
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: sops_cli_binary.stat.exists
+
+- name: Determine whether SOPS must be installed
+  ansible.builtin.set_fact:
+    sops_cli_install_required: >-
+      {{
+        not sops_cli_binary.stat.exists
+        or sops_cli_installed_version.rc | default(1) != 0
+        or sops_cli_version not in (sops_cli_installed_version.stdout | default(''))
+      }}
+
+- name: Install the pinned SOPS binary
+  become: true
+  ansible.builtin.get_url:
+    url: "{{ sops_cli_download_url }}"
+    dest: "{{ sops_cli_install_path }}"
+    checksum: "sha256:{{ sops_cli_sha256 }}"
+    owner: root
+    group: root
+    mode: "0755"
+  when: sops_cli_install_required | bool
+
+- name: Verify the pinned SOPS release
+  ansible.builtin.command:
+    argv:
+      - "{{ sops_cli_install_path }}"
+      - --version
+  register: sops_cli_final_version
+  changed_when: false
+  failed_when: >-
+    sops_cli_final_version.rc != 0
+    or sops_cli_version not in (sops_cli_final_version.stdout | default(''))
+  check_mode: false
+  when: not ansible_check_mode or not (sops_cli_install_required | bool)
+

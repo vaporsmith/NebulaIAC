@@ -1,0 +1,40 @@
+---
+- name: Refresh OpenBao member status before unseal
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ openbao_kubeconfig }}
+    -n {{ openbao_namespace }} exec {{ openbao_member }} --
+    bao status -format=json
+  register: openbao_member_status
+  changed_when: false
+  failed_when: openbao_member_status.rc not in [0, 2]
+
+- name: Unseal OpenBao member with the configured threshold
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --kubeconfig={{ openbao_kubeconfig }}
+      -n {{ openbao_namespace }} exec -i {{ openbao_member }} --
+      bao operator unseal -format=json
+    stdin: "{{ openbao_unseal_key }}"
+  loop: >-
+    {{ openbao_initialization_material.unseal_keys_b64
+       [:openbao_key_threshold | int] }}
+  loop_control:
+    loop_var: openbao_unseal_key
+    label: "redacted unseal share"
+  changed_when: true
+  no_log: true
+  when: (openbao_member_status.stdout | from_json).sealed | bool
+
+- name: Wait for OpenBao member to become unsealed
+  ansible.builtin.command: >
+    kubectl --kubeconfig={{ openbao_kubeconfig }}
+    -n {{ openbao_namespace }} exec {{ openbao_member }} --
+    bao status -format=json
+  register: openbao_member_unsealed_status
+  retries: 12
+  delay: 5
+  until: not (openbao_member_unsealed_status.stdout | from_json).sealed | bool
+  changed_when: false
+  failed_when: openbao_member_unsealed_status.rc not in [0, 2]
+
+

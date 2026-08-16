@@ -2,6 +2,35 @@
 
 This directory contains utility scripts used to manage and automate your OpenTofu + Ansible infrastructure workflows.
 
+## `setup_age.sh`
+
+**Purpose:** Creates and validates the operator age identity used to encrypt
+and recover OpenBao initialization material.
+
+Run it as the normal user that executes Ansible:
+
+```bash
+./scripts/setup_age.sh
+```
+
+The script:
+
+- Ensures `/data/.age` exists, is owned by the invoking user, and has mode
+  `0700`.
+- Creates `/data/.age/keys.txt` with mode `0600` when it does not exist.
+- Preserves and validates an existing identity instead of replacing it.
+- Prints the public `openbao_age_recipient` YAML value for
+  `ansible/vars/global.yml`.
+- Reports the future encrypted recovery artifact location:
+  `/data/.age/openbao-init.sops.json`.
+
+The private `keys.txt` file must never be committed to Git. Back it up to a
+separate encrypted or physically secured location. To select another absolute
+directory, set `NEBULAIAC_AGE_DIR` and configure `openbao_age_directory` to the
+same path.
+
+---
+
 ## `manage.py`
 
 **Purpose:** Wrapper for infrastructure lifecycle management using OpenTofu (Terraform fork).

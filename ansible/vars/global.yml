@@ -1,2 +1,7 @@
 ansible_user: ansible
 ansible_ssh_private_key_file: ../ssh/id_ansible
+
+# Public age recipient used to encrypt OpenBao initialization and recovery
+# material. Define the real value in environment-specific vars before enabling
+# the OpenBao role. Never place the corresponding private identity in Git.
+openbao_age_recipient: "age1hkxppvkn83athfngnjdseekaf6l0747yaex0ncqsfuylq8ftwf9q4fzcff"

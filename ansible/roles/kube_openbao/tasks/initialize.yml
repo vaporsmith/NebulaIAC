@@ -1,0 +1,129 @@
+---
+- name: Check for the encrypted recovery artifact on the Kubernetes controller
+  ansible.builtin.stat:
+    path: "{{ openbao_remote_recovery_file }}"
+  register: openbao_remote_recovery_stat
+
+- name: Check for the encrypted off-cluster recovery artifact
+  ansible.builtin.stat:
+    path: "{{ openbao_local_recovery_file }}"
+  register: openbao_local_recovery_stat
+  delegate_to: localhost
+  become: false
+
+- name: Reject stale recovery material beside an uninitialized cluster
+  ansible.builtin.assert:
+    that:
+      - not openbao_remote_recovery_stat.stat.exists
+      - not openbao_local_recovery_stat.stat.exists
+    fail_msg: >-
+      OpenBao reports initialized=false, but an encrypted initialization
+      artifact already exists. Refusing to overwrite possible recovery
+      material. Reconcile the cluster and artifact manually.
+  when: not openbao_status_data.initialized | bool
+
+- name: Create the protected recovery directory on the Kubernetes controller
+  ansible.builtin.file:
+    path: "{{ openbao_remote_recovery_directory }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: not openbao_status_data.initialized | bool
+
+- name: Validate SOPS encryption and the configured age recipient
+  ansible.builtin.command:
+    cmd: >-
+      sops --encrypt --age {{ openbao_age_recipient }}
+      --input-type json --output-type json /dev/stdin
+    stdin: '{"openbao_bootstrap_probe":true}'
+  changed_when: false
+  no_log: true
+  when: not openbao_status_data.initialized | bool
+
+- name: Initialize OpenBao and atomically encrypt its initialization response
+  ansible.builtin.shell: |
+    set -euo pipefail
+    umask 077
+    encrypted_tmp="$(mktemp {{ openbao_remote_recovery_directory }}/openbao-init.XXXXXX)"
+    trap 'test ! -e "${encrypted_tmp}" || mv "${encrypted_tmp}" "${encrypted_tmp}.failed"' EXIT
+
+    init_json="$(
+      kubectl --kubeconfig={{ openbao_kubeconfig }} \
+        -n {{ openbao_namespace }} exec {{ openbao_release_name }}-0 -- \
+        bao operator init \
+          -key-shares={{ openbao_key_shares }} \
+          -key-threshold={{ openbao_key_threshold }} \
+          -format=json
+    )"
+
+    printf '%s' "${init_json}" |
+      sops --encrypt \
+        --age {{ openbao_age_recipient | quote }} \
+        --input-type json \
+        --output-type json \
+        /dev/stdin > "${encrypted_tmp}"
+
+    mv "${encrypted_tmp}" {{ openbao_remote_recovery_file | quote }}
+    trap - EXIT
+    printf '%s' "${init_json}"
+  args:
+    executable: /bin/bash
+  register: openbao_initialization_result
+  changed_when: true
+  no_log: true
+  when: not openbao_status_data.initialized | bool
+
+- name: Create the off-cluster recovery directory
+  ansible.builtin.file:
+    path: "{{ openbao_local_recovery_file | dirname }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+
+- name: Preserve the encrypted recovery artifact off-cluster
+  ansible.builtin.fetch:
+    src: "{{ openbao_remote_recovery_file }}"
+    dest: "{{ openbao_local_recovery_file }}"
+    flat: true
+  when:
+    - (not openbao_status_data.initialized | bool) or
+      (openbao_remote_recovery_stat.stat.exists and not openbao_local_recovery_stat.stat.exists)
+
+- name: Protect the off-cluster recovery artifact permissions
+  ansible.builtin.file:
+    path: "{{ openbao_local_recovery_file }}"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  when:
+    - (not openbao_status_data.initialized | bool) or
+      openbao_local_recovery_stat.stat.exists or
+      openbao_remote_recovery_stat.stat.exists
+
+- name: Require recoverable initialization material for managed OpenBao
+  ansible.builtin.stat:
+    path: "{{ openbao_local_recovery_file }}"
+  register: openbao_local_recovery_final_stat
+  delegate_to: localhost
+  become: false
+
+- name: Verify the encrypted recovery artifact is available off-cluster
+  ansible.builtin.assert:
+    that:
+      - openbao_local_recovery_final_stat.stat.exists
+      - openbao_local_recovery_final_stat.stat.size | int > 0
+    fail_msg: >-
+      OpenBao is managed by this role, but its encrypted off-cluster recovery
+      artifact is unavailable. Refusing to continue because future automated
+      unseal and disaster recovery would be impossible.
+
+- name: Retain newly generated initialization material in memory
+  ansible.builtin.set_fact:
+    openbao_initialization_material: "{{ openbao_initialization_result.stdout | from_json }}"
+  no_log: true
+  when:
+    - openbao_initialization_result is defined
+    - not (openbao_initialization_result.skipped | default(false))
+

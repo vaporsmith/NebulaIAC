@@ -1,0 +1,10 @@
+---
+sops_cli_version: "3.13.3"
+sops_cli_arch: "amd64"
+sops_cli_install_path: "/usr/local/bin/sops"
+sops_cli_asset_name: "sops-v{{ sops_cli_version }}.linux.{{ sops_cli_arch }}"
+sops_cli_download_url: >-
+  https://github.com/getsops/sops/releases/download/v{{ sops_cli_version }}/{{ sops_cli_asset_name }}
+sops_cli_sha256: "e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b"
+
+

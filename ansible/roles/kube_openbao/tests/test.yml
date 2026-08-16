@@ -1,0 +1,9 @@
+---
+- name: Deploy the Kubernetes secrets-management platform
+  hosts: kube_controllers
+  become: true
+  serial: 1
+  roles:
+    - kube_helm
+    - kube_openbao
+
