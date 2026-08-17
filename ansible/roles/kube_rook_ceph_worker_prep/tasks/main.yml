@@ -17,15 +17,44 @@
     fail_msg: "{{ rook_ceph_osd_device }} must exist and be a block device on every kube worker."
 
 - name: Check for filesystem signatures on Ceph OSD device
-  ansible.builtin.command: "wipefs -n {{ rook_ceph_osd_device }}"
+  ansible.builtin.command:
+    argv:
+      - wipefs
+      - --noheadings
+      - --output
+      - TYPE
+      - --no-act
+      - "{{ rook_ceph_osd_device }}"
   register: rook_ceph_wipefs_check
   changed_when: false
 
-- name: Assert Ceph OSD device has no filesystem signatures
+- name: Record Ceph OSD device signature types
+  ansible.builtin.set_fact:
+    rook_ceph_osd_signature_types: >-
+      {{
+        rook_ceph_wipefs_check.stdout_lines
+        | map('trim')
+        | reject('equalto', '')
+        | unique
+        | list
+      }}
+
+- name: Assert Ceph OSD device has only safe signatures
   ansible.builtin.assert:
     that:
-      - rook_ceph_wipefs_check.stdout | trim == ""
-    fail_msg: "{{ rook_ceph_osd_device }} has filesystem signatures. Rook expects a clean raw device. Output: {{ rook_ceph_wipefs_check.stdout }}"
+      - >-
+        rook_ceph_osd_signature_types
+        | difference(rook_ceph_allowed_existing_signatures)
+        | length == 0
+    fail_msg: >-
+      {{ rook_ceph_osd_device }} has signatures that are not safe for automatic
+      Rook reconciliation: {{ rook_ceph_osd_signature_types | join(', ') }}.
+      Allowed existing signatures:
+      {{ rook_ceph_allowed_existing_signatures | join(', ') }}. This role will
+      not wipe the device automatically.
+    success_msg: >-
+      {{ rook_ceph_osd_device }} is either clean or already contains an allowed
+      Rook/Ceph signature: {{ rook_ceph_osd_signature_types | default([]) | join(', ') }}
 
 - name: Read Ceph OSD device size in bytes
   ansible.builtin.command: "blockdev --getsize64 {{ rook_ceph_osd_device }}"
@@ -46,3 +75,4 @@
 - name: Display worker disk layout
   ansible.builtin.debug:
     var: rook_ceph_lsblk.stdout_lines
+

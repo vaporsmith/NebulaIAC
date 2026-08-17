@@ -2,6 +2,12 @@
 rook_ceph_osd_device: "/dev/vdb"
 rook_ceph_min_osd_size_gb: 240
 
+# A rerun after Rook has initialized the device will report this signature.
+# Unknown signatures still fail closed; this role never wipes a device.
+rook_ceph_allowed_existing_signatures:
+  - ceph_bluestore
+
 rook_ceph_worker_packages:
   - lvm2
   - cryptsetup
+
